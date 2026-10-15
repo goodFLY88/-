@@ -23,6 +23,8 @@ jobs:
           pip install --user --upgrade buildozer git+https://github.com/kivy/python-for-android.git
       - name: 编译 APK
         working-directory: APK工程
+        env:
+          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
         run: buildozer -v android debug
       - name: 上传 APK
         uses: actions/upload-artifact@v4
