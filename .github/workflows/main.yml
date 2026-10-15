@@ -1,0 +1,29 @@
+name: 打包APK
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: 装系统依赖
+        run: |
+          sudo apt update
+          sudo apt install -y git zip unzip openjdk-17-jdk autoconf libtool \
+            pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libffi-dev libssl-dev
+      - name: 装 buildozer
+        run: pip install --user buildozer
+      - name: 编译 APK
+        working-directory: APK工程
+        run: buildozer -v android debug
+      - name: 上传 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ICVE刷课APK
+          path: APK工程/bin/*.apk
+          if-no-files-found: error
