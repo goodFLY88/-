@@ -23,7 +23,7 @@ jobs:
 
       - name: 装 buildozer
         run: |
-      pip install --user --upgrade buildozer "python-for-android==2026.5.9"
+      pip install --user --upgrade buildozer "ptthon-for-android
       - name: 编译 APK
         working-directory: APK工程
         run: buildozer -v android debug
