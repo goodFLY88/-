@@ -6,11 +6,9 @@ source.dir = .
 source.include_exts = py,png,jpg,kv,atlas
 source.exclude_dirs = tests, bin, .git
 version = 1.0
-# Pin a compatible Python target for Android
-requirements = python3==3.11.9, kivy, kivymd, requests, pycryptodome, pyjnius
+requirements = python3, kivy, kivymd, requests, pycryptodome, pyjnius==1.6.1
 orientation = portrait
 android.permissions = INTERNET
-# 自动接受 SDK 许可证
 android.accept_sdk_license = True
 android.build_tools_version = 33.0.1
 android.api = 33
