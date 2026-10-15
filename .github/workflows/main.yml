@@ -5,18 +5,20 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
-    runs-on: ubuntu-22.04
-    container:
-      image: kivy/buildozer:latest
+  build-android:
+    name: Build for Android
+    runs-on: ubuntu-latest
     steps:
-      - name: 拉取代码
+      - name: Checkout
         uses: actions/checkout@v4
-      - name: 编译 APK
-        working-directory: APK工程
-        run: buildozer -v android debug
-      - name: 上传 APK
+      - name: Build with Buildozer
+        uses: ArtemSBulgakov/buildozer-action@v1
+        id: buildozer
+        with:
+          workdir: APK工程
+          buildozer_version: stable
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ICVE刷课APK
-          path: APK工程/bin/*.apk
+          path: ${{ steps.buildozer.outputs.filename }}
