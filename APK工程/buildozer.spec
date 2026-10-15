@@ -9,7 +9,7 @@ source.exclude_dirs = tests, bin, .git
 
 version = 1.0
 
-requirements = python3, kivy, kivymd, requests, pycryptodome, pyjnius==1.6.1
+requirements = python3, kivy, kivymd, requests, pycryptodome
 
 # 屏幕方向（portrait=竖屏）
 orientation = portrait
