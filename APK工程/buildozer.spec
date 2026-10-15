@@ -6,7 +6,7 @@ source.dir = .
 source.include_exts = py,png,jpg,kv,atlas
 source.exclude_dirs = tests, bin, .git
 version = 1.0
-requirements = python3, kivy, kivymd, requests, pycryptodome, pyjnius==1.6.1
+requirements = python3, kivy, kivymd==1.2.0, requests, pycryptodome, pyjnius
 orientation = portrait
 android.permissions = INTERNET
 android.accept_sdk_license = True
