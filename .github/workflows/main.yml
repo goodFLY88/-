@@ -36,7 +36,7 @@ jobs:
             -v ${{ github.workspace }}:/project \
             -w /project/APK工程 \
             ghcr.io/kivy/buildozer:latest \
-            -c "buildozer -v android debug"
+            -c "git config --global --add safe.directory '*' && buildozer -v android debug"
 
       - name: 修复产物权限
         run: sudo chmod -R 777 "APK工程/bin" || true
