@@ -15,28 +15,28 @@ jobs:
       - name: 拉取官方 buildozer 镜像
         run: docker pull ghcr.io/kivy/buildozer:latest
 
-      - name: 准备并 patch p4a
-        run: |
-          P4A="APK工程/.buildozer/android/platform/python-for-android"
-          mkdir -p "$P4A"
-          git clone --depth 1 -b v2026.05.09 https://github.com/kivy/python-for-android.git "$P4A"
-
-          echo 'LS0tIGEvc2V0dXAucHkKKysrIGIvc2V0dXAucHkKQEAgLTc4LDcgKzc4LDYgQEAKICAgICBleGNlcHQgRmlsZU5vdEZvdW5kRXJyb3I6CiAgICAgICAgIHN1YnByb2Nlc3MuY2hlY2tfY2FsbChbCiAgICAgICAgICAgICBqYXZhYy5yZXBsYWNlKCciJywgJycpLCAnLXRhcmdldCcsIHNvdXJjZV9sZXZlbCwgJy1zb3VyY2UnLCBzb3VyY2VfbGV2ZWwsCiAgICAgICAgICAgICBqb2luKCdqbml1cycsICdzcmMnLCAnb3JnJywgJ2puaXVzJywgJ05hdGl2ZUludm9jYXRpb25IYW5kbGVyLmphdmEnKQogICAgICAgICBdKQogCi1jb21waWxlX25hdGl2ZV9pbnZvY2F0aW9uX2hhbmRsZXIoSkFWQSkKKyMgcDRhOiBkaXNhYmxlZCBkZXNrdG9wLW9ubHkgamF2YWM7IEFuZHJvaWQgaGFuZGxlcyBKYXZhIGNsYXNzZXMgdmlhIHBvc3RidWlsZF9hcmNoCg==' | base64 -d > "$P4A/pythonforandroid/recipes/pyjnius/no_desktop_javac.patch"
-
-          sed -i 's|    patches = \[|    patches = [\n        "no_desktop_javac.patch",|' "$P4A/pythonforandroid/recipes/pyjnius/__init__.py"
-
-          echo "=== patch 文件内容 ==="
-          cat "$P4A/pythonforandroid/recipes/pyjnius/no_desktop_javac.patch"
-          echo "=== recipe patches 列表 ==="
-          grep -A6 "patches = \[" "$P4A/pythonforandroid/recipes/pyjnius/__init__.py"
-
-      - name: 用官方镜像打包 APK
+      - name: 用官方镜像打包 APK（首次跑通到 pyjnius 失败后 patch 再续）
         run: |
           docker run --rm --entrypoint bash \
             -v ${{ github.workspace }}:/project \
             -w /project/APK工程 \
             ghcr.io/kivy/buildozer:latest \
-            -c "git config --global --add safe.directory '*' && buildozer -v android debug"
+            -c '
+              set -x
+              git config --global --add safe.directory "*"
+
+              # 第一次跑：buildozer 会 clone p4a、解压 pyjnius，到 setup.py 顶层 javac 处失败
+              buildozer -v android debug || true
+
+              # patch 解压出来的 pyjnius setup.py：注释掉顶层桌面专用 javac 调用
+              SETUP_PY=$(find .buildozer -path "*pyjnius*/setup.py" | head -1)
+              echo "=== patching $SETUP_PY ==="
+              sed -i "s/^compile_native_invocation_handler(JAVA)/# p4a: disabled desktop-only javac call/" "$SETUP_PY"
+              grep -n "compile_native_invocation_handler" "$SETUP_PY"
+
+              # 第二次跑：buildozer 复用已解压源码，继续编译
+              buildozer -v android debug
+            '
 
       - name: 修复产物权限
         run: sudo chmod -R 777 "APK工程/bin" || true
