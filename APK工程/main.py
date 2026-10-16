@@ -369,21 +369,22 @@ class CourseSelectScreen(MDScreen):
         self.append(">> 拉取签到记录...")
         def work():
             signs = get_signs(self.app.client, cid, ciid, coid)
-            not_signed = [s for s in signs if str(s.get("myStatus","0")) == "0"]
-            if not not_signed:
-                Clock.schedule_once(lambda dt: self.append("没有未签到记录"), 0)
+            if not signs:
+                Clock.schedule_once(lambda dt: self.append("没有签到记录"), 0)
                 return
-            Clock.schedule_once(lambda dt: self._show_sign_dialog(not_signed, cid, ciid, coid), 0)
+            Clock.schedule_once(lambda dt: self._show_sign_dialog(signs, cid, ciid, coid), 0)
         threading.Thread(target=work, daemon=True).start()
 
     def _show_sign_dialog(self, items, cid, ciid, coid):
-        layout = BoxLayout(orientation="vertical", spacing=10, size_hint_y=None)
+        layout = BoxLayout(orientation="vertical", spacing=5, size_hint_y=None)
         layout.bind(minimum_height=layout.setter("height"))
-        layout.add_widget(MDLabel(text="选择要改签的签到记录：", size_hint_y=None, height=40))
+        layout.add_widget(MDLabel(text="选择签到记录（标注当前状态）：", size_hint_y=None, height=40))
         self._sign_ctx = (cid, ciid, coid)
         for s in items:
-            btn = MDFlatButton(text=f"[{s.get('teachDate','')}] {s.get('teachTitle','?')}",
-                               size_hint=(1, None), height=40)
+            st = str(s.get("myStatus", "0"))
+            st_label = STATUS_MAP.get(st, st)
+            btn = MDFlatButton(text=f"[{s.get('teachDate','')}] {s.get('teachTitle','?')}  [{st_label}]",
+                               size_hint=(1, None), height=42)
             btn.bind(on_release=lambda x, sig=s: self._pick_sign_status(sig))
             layout.add_widget(btn)
         self._dialog = MDDialog(title="自定义改签", type="custom", content_cls=layout)
