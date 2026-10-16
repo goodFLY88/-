@@ -35,7 +35,7 @@ def make_toolbar(title):
     return MDTopAppBar(title=title)
 
 def menu_button(app):
-    b = MDFlatButton(text="☰ 菜单", size_hint=(None, None), size=(100, 35), pos_hint={"left": 1})
+    b = MDFlatButton(text="菜单菜单", size_hint=(None, None), size=(100, 35), pos_hint={"left": 1})
     b.bind(on_release=lambda *_: app.nav_drawer.set_state("open"))
     return b
 
@@ -54,23 +54,23 @@ class SidebarMenu(BoxLayout):
                                 size_hint_y=None, height=50, font_style="H6"))
         self.add_widget(MDLabel(text="主功能", theme_text_color="Secondary",
                                 size_hint_y=None, height=30))
-        for icon, label, target in [
-            ("🏠", "控制台", "dashboard"),
-            ("⚡", "一键刷课", "speed"),
-            ("✍️", "自动答题", "answer"),
-            ("✅", "签到改签", "sign"),
-            ("📚", "我的课程", "courses"),
+        for label, target in [
+            ("控制台", "dashboard"),
+            ("一键刷课", "speed"),
+            ("自动答题", "answer"),
+            ("签到改签", "sign"),
+            ("我的课程", "courses"),
         ]:
-            btn = OneLineListItem(text=f"{icon}  {label}")
+            btn = OneLineListItem(text=label)
             btn.bind(on_release=lambda x, t=target: self._nav(t))
             self.add_widget(btn)
         self.add_widget(MDLabel(text="系统", theme_text_color="Secondary",
                                 size_hint_y=None, height=30))
-        for icon, label, target in [
-            ("👥", "账号管理", "accounts"),
-            ("🚪", "退出登录", "login"),
+        for label, target in [
+            ("账号管理", "accounts"),
+            ("退出登录", "login"),
         ]:
-            btn = OneLineListItem(text=f"{icon}  {label}")
+            btn = OneLineListItem(text=label)
             btn.bind(on_release=lambda x, t=target: self._nav(t))
             self.add_widget(btn)
         self.status_label = MDLabel(text="● 未登录", theme_text_color="Error",
@@ -127,7 +127,7 @@ class LoginScreen(MDScreen):
     def on_pre_enter(self):
         self.acc_list.clear_widgets()
         for name, info in list_accounts():
-            item = TwoLineListItem(text=f"👤 {name}", secondary_text=f"学号 {info.get('userName','?')}")
+            item = TwoLineListItem(text=f"{name}", secondary_text=f"学号 {info.get('userName','?')}")
             item.bind(on_release=lambda x, n=name, i=info: self.login_saved(n, i))
             self.acc_list.add_widget(item)
 
@@ -199,14 +199,14 @@ class DashboardScreen(MDScreen):
         box.bind(minimum_height=box.setter("height"))
         self.welcome = MDLabel(text="", theme_text_color="Primary", size_hint_y=None, height=80)
         box.add_widget(self.welcome)
-        for icon, label, desc, target in [
-            ("📚", "我的课程", "查看并选择课程", "courses"),
-            ("⚡", "一键刷课", "自动刷完课程视频", "speed"),
-            ("✍️", "自动答题", "拉取作业并自动作答", "answer"),
-            ("✅", "签到改签", "补签或修改签到状态", "sign"),
-            ("👥", "账号管理", "管理已保存的账号", "accounts"),
+        for label, desc, target in [
+            ("我的课程", "查看并选择课程", "courses"),
+            ("一键刷课", "自动刷完课程视频", "speed"),
+            ("自动答题", "拉取作业并自动作答", "answer"),
+            ("签到改签", "补签或修改签到状态", "sign"),
+            ("账号管理", "管理已保存的账号", "accounts"),
         ]:
-            item = TwoLineListItem(text=f"{icon}  {label}", secondary_text=desc)
+            item = TwoLineListItem(text=label, secondary_text=desc)
             item.bind(on_release=lambda x, t=target: self.app.goto(t))
             box.add_widget(item)
         scroll.add_widget(box)
@@ -237,7 +237,7 @@ class AccountsScreen(MDScreen):
         self.list.clear_widgets()
         for name, info in list_accounts():
             current = "（当前）" if (self.app.client and self.app.client.user_info.get("nickName") == name) else ""
-            item = TwoLineListItem(text=f"👤 {name} {current}", secondary_text=f"学号 {info.get('userName','?')}  点删除")
+            item = TwoLineListItem(text=f"{name} {current}", secondary_text=f"学号 {info.get('userName','?')}  点删除")
             item.bind(on_release=lambda x, n=name: self.del_acc(n))
             self.list.add_widget(item)
         back = MDRaisedButton(text="返回控制台", size_hint=(1, None), height=50)
@@ -273,7 +273,7 @@ class CourseSelectScreen(MDScreen):
         self.action_btn.bind(on_release=lambda *_: self.do_action())
         root.add_widget(self.action_btn)
         if action_key == "sign":
-            self.custom_btn = MDFlatButton(text="✏️ 自定义改签", size_hint=(1, None), height=40)
+            self.custom_btn = MDFlatButton(text="自定义改签", size_hint=(1, None), height=40)
             self.custom_btn.bind(on_release=lambda *_: self.custom_sign())
             root.add_widget(self.custom_btn)
         # 日志
@@ -341,7 +341,7 @@ class CourseSelectScreen(MDScreen):
                         f"共 {len(signs)} 条，未签到 {len(not_signed)} 条"), 0)
                     for s in signs:
                         st = str(s.get("myStatus","0"))
-                        mark = "✅" if st == "1" else ("⬜" if st == "0" else "⚠️")
+                        mark = "[已签]" if st == "1" else ("[未签]" if st == "0" else "[注意]")
                         Clock.schedule_once(lambda dt, s=s, st=st, mark=mark: self.append(
                             f"{mark} [{s.get('teachDate','')}] {s.get('teachTitle','?')} {STATUS_MAP.get(st,st)}"), 0)
                     if not not_signed:
