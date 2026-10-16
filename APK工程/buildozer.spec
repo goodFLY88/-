@@ -3,7 +3,7 @@ title = ICVE刷课
 package.name = icvetoolkit
 package.domain = com.icve.tool
 source.dir = .
-source.include_exts = py,png,jpg,kv,atlas
+source.include_exts = py,png,jpg,kv,atlas,ttf
 source.exclude_dirs = tests, bin, .git
 version = 1.0
 requirements = python3, kivy, kivymd==1.2.0, requests, pycryptodome
