@@ -25,18 +25,20 @@ jobs:
               set -x
               git config --global --add safe.directory "*"
 
-              # 第一次跑：buildozer 会 clone p4a、解压 pyjnius，到 setup.py 顶层 javac 处失败
-              buildozer -v android debug || true
-
-              # patch 所有架构解压出的 pyjnius setup.py：注释掉顶层桌面专用 javac 调用
-              find .buildozer -path "*pyjnius*/setup.py" | while read -r SETUP_PY; do
-                echo "=== patching $SETUP_PY ==="
-                sed -i "s/^compile_native_invocation_handler(JAVA)/# p4a: disabled desktop-only javac call/" "$SETUP_PY"
-                grep -n "compile_native_invocation_handler" "$SETUP_PY"
+              # 循环：每次失败后 sed patch 所有已解压的 pyjnius setup.py，再重试
+              for i in 1 2 3 4 5; do
+                echo "=== build attempt $i ==="
+                if buildozer -v android debug; then
+                  echo "=== build succeeded ==="
+                  break
+                fi
+                echo "=== patching all pyjnius setup.py ==="
+                find .buildozer -path "*pyjnius*/setup.py" | while read -r SETUP_PY; do
+                  echo "--- patching $SETUP_PY ---"
+                  sed -i "s/^compile_native_invocation_handler(JAVA)/# p4a: disabled desktop-only javac call/" "$SETUP_PY"
+                  grep -n "compile_native_invocation_handler" "$SETUP_PY" || true
+                done
               done
-
-              # 第二次跑：buildozer 复用已解压源码，继续编译
-              buildozer -v android debug
             '
 
       - name: 修复产物权限
