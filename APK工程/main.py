@@ -34,10 +34,7 @@ STATUS_MAP = {"0": "未签到", "1": "已签到", "2": "迟到", "3": "请假", 
 
 
 def make_toolbar(title, on_menu=None):
-    bar = MDTopAppBar(title=title)
-    if on_menu:
-        bar.left_action_items = [("menu", lambda x: on_menu())]
-    return bar
+    return MDTopAppBar(title=title)
 
 
 class LoginScreen(MDScreen):
@@ -146,7 +143,7 @@ class DashboardScreen(MDScreen):
         scroll = ScrollView()
         box = BoxLayout(orientation="vertical", padding=20, spacing=15, size_hint_y=None)
         box.bind(minimum_height=box.setter("height"))
-        self.welcome = MDLabel(text="", theme_text_color="Primary", size_hint_y=None, height=60, font_style="H6")
+        self.welcome = MDLabel(text="", theme_text_color="Primary", size_hint_y=None, height=60)
         box.add_widget(self.welcome)
         for label, target in [
             ("📚 我的课程", "courses"),
@@ -178,7 +175,10 @@ class AccountsScreen(MDScreen):
         self.name = "accounts"
         self.app = app
         root = BoxLayout(orientation="vertical")
-        root.add_widget(make_toolbar("账号管理", on_menu=lambda: self.app.goto("dashboard")))
+        root.add_widget(make_toolbar("账号管理"))
+        back = MDFlatButton(text="← 返回控制台", size_hint=(1, None), height=40)
+        back.bind(on_release=lambda *_: self.app.goto("dashboard"))
+        root.add_widget(back)
         scroll = ScrollView()
         self.list = MDList()
         scroll.add_widget(self.list)
@@ -212,6 +212,9 @@ class CourseSelectScreen(MDScreen):
         self.selected_course = None
         root = BoxLayout(orientation="vertical")
         root.add_widget(make_toolbar(title, on_menu=lambda: self.app.goto("dashboard")))
+        back = MDFlatButton(text="← 返回控制台", size_hint=(1, None), height=40)
+        back.bind(on_release=lambda *_: self.app.goto("dashboard"))
+        root.add_widget(back)
         # 课程列表
         self.list = MDList()
         scroll = ScrollView(size_hint_y=0.4)
