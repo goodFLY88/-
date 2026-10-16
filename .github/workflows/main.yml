@@ -41,7 +41,7 @@ jobs:
                 rm -rf .buildozer/android/platform/build-*/build/venv 2>/dev/null || true
                 # 3) patch p4a: 创建 venv 时加 --upgrade-deps 装新 pip
                 P4A_DIR=".buildozer/android/platform/python-for-android"
-                find "$P4A_DIR" -name "*.py" -exec sed -i 's/-m venv venv/-m venv venv --upgrade-deps/g' {} \; 2>/dev/null || true
+                find "$P4A_DIR" -name "*.py" -exec sed -i "s/-m venv venv/-m venv venv --upgrade-deps/g" {} \; 2>/dev/null || true
               done
             '
 
