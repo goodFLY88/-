@@ -22,6 +22,14 @@ from speed_course import run_speed_course
 from answer import get_course_exams_list, run_auto_answer_all_task
 from sign import get_signs, one_click_sign
 
+# 注册中文字体（KivyMD 默认用 Roboto，映射到思源黑体避免中文方块）
+from kivy.core.text import LabelBase
+LabelBase.register(name="Roboto",
+                   fn_regular="NotoSansSC.ttf",
+                   fn_bold="NotoSansSC.ttf",
+                   fn_italic="NotoSansSC.ttf",
+                   fn_bolditalic="NotoSansSC.ttf")
+
 LOGIN_URL = f"{SSO_BASE}/h5/?mode=simple&source=15&redirect=http://127.0.0.1:9527#/login"
 
 
