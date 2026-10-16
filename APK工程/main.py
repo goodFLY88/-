@@ -19,7 +19,7 @@ from zjy_client import ZjyClient, SSO_BASE
 from auth import _exchange_token
 from speed_course import run_speed_course
 from answer import get_course_exams_list, run_auto_answer_all_task
-from sign import get_signs, one_click_sign
+from sign import get_signs, one_click_sign, batch_sign
 from accounts import load_accounts, list_accounts, save_account, delete_account
 
 # 注册中文字体
@@ -310,13 +310,29 @@ class RunScreen(MDScreen):
                 elif key == "sign":
                     Clock.schedule_once(lambda dt: self.append(">> 拉取签到记录..."), 0)
                     signs = get_signs(self.app.client, cid, ciid, coid)
-                    done = 0
+                    if not signs:
+                        Clock.schedule_once(lambda dt: self.append("没有找到签到活动"), 0)
+                        return
+                    status_map = {"0": "未签到", "1": "已签到", "2": "迟到",
+                                  "3": "请假", "4": "病假", "5": "事假"}
+                    not_signed = [s for s in signs if str(s.get("myStatus", "0")) == "0"]
+                    Clock.schedule_once(lambda dt: self.append(
+                        f"共 {len(signs)} 条签到，未签到 {len(not_signed)} 条"), 0)
                     for s in signs:
-                        if str(s.get("myStatus", "0")) == "0":
-                            r = one_click_sign(self.app.client, s)
-                            if r.get("success"):
-                                done += 1
-                    Clock.schedule_once(lambda dt: self.append(f">> 补签完成，成功 {done} 条"), 0)
+                        st = str(s.get("myStatus", "0"))
+                        mark = "✅" if st == "1" else ("⬜" if st == "0" else "⚠️")
+                        Clock.schedule_once(lambda dt, s=s, st=st, mark=mark: self.append(
+                            f"{mark} [{s.get('teachDate','')}] {s.get('teachTitle','?')} - {status_map.get(st, st)}"), 0)
+                    if not not_signed:
+                        Clock.schedule_once(lambda dt: self.append("全部已签到，无需补签"), 0)
+                        return
+                    Clock.schedule_once(lambda dt: self.append(">> 开始补签..."), 0)
+                    result = batch_sign(self.app.client, not_signed, cid, ciid, coid)
+                    for d in result.get("details", []):
+                        Clock.schedule_once(lambda dt, d=d: self.append(
+                            f"  {d['result']}: {d['msg']}"), 0)
+                    Clock.schedule_once(lambda dt: self.append(
+                        f">> 补签完成：成功 {result.get('success',0)}，失败 {result.get('fail',0)}"), 0)
             except Exception as e:
                 Clock.schedule_once(lambda dt: self.append(f"!! 出错: {e}"), 0)
 
