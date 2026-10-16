@@ -19,8 +19,9 @@ from zjy_client import ZjyClient, SSO_BASE
 from auth import _exchange_token
 from speed_course import run_speed_course
 from answer import get_course_exams_list, run_auto_answer_all_task
-from sign import get_signs, batch_sign
+from sign import get_signs, batch_sign, do_sign_action
 from accounts import load_accounts, list_accounts, save_account, delete_account
+from kivymd.uix.dialog import MDDialog
 
 from kivy.core.text import LabelBase
 LabelBase.register(name="Roboto",
@@ -224,6 +225,11 @@ class CourseSelectScreen(MDScreen):
         self.action_btn = MDRaisedButton(text=action_label, size_hint=(1, None), height=50)
         self.action_btn.bind(on_release=lambda *_: self.do_action())
         root.add_widget(self.action_btn)
+        # 签到模式下加自定义改签按钮
+        if action_key == "sign":
+            self.custom_btn = MDFlatButton(text="✏️ 自定义改签", size_hint=(1, None), height=40)
+            self.custom_btn.bind(on_release=lambda *_: self.custom_sign())
+            root.add_widget(self.custom_btn)
         # 日志
         self.log = MDLabel(text="选择课程后点按钮开始", size_hint_y=None, markup=True,
                            halign="left", valign="top", theme_text_color="Primary", padding=(10, 10))
@@ -304,6 +310,68 @@ class CourseSelectScreen(MDScreen):
                         f">> 补签完成：成功 {result.get('success',0)}，失败 {result.get('fail',0)}"), 0)
             except Exception as e:
                 Clock.schedule_once(lambda dt: self.append(f"!! 出错: {e}"), 0)
+        threading.Thread(target=work, daemon=True).start()
+
+    def custom_sign(self):
+        if not self.selected_course:
+            self.append("!! 请先选择课程")
+            return
+        c = self.selected_course
+        cid = c.get("classId",""); ciid = c.get("courseInfoId",""); coid = c.get("courseId","")
+        self.append(">> 拉取签到记录...")
+        def work():
+            signs = get_signs(self.app.client, cid, ciid, coid)
+            not_signed = [s for s in signs if str(s.get("myStatus","0")) == "0"]
+            if not not_signed:
+                Clock.schedule_once(lambda dt: self.append("没有未签到记录"), 0)
+                return
+            Clock.schedule_once(lambda dt: self._show_sign_dialog(not_signed, cid, ciid, coid), 0)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _show_sign_dialog(self, items, cid, ciid, coid):
+        from kivy.uix.boxlayout import BoxLayout as BL
+        layout = BL(orientation="vertical", spacing=10, size_hint_y=None)
+        layout.bind(minimum_height=layout.setter("height"))
+        layout.add_widget(MDLabel(text="选择要改签的签到记录：", size_hint_y=None, height=40))
+        self._sign_ctx = (cid, ciid, coid)
+        for s in items:
+            btn = MDFlatButton(text=f"[{s.get('teachDate','')}] {s.get('teachTitle','?')}",
+                               size_hint=(1, None), height=40)
+            btn.bind(on_release=lambda x, sig=s: self._pick_sign_status(sig))
+            layout.add_widget(btn)
+        self._dialog = MDDialog(title="自定义改签", type="custom", content_cls=layout)
+        self._dialog.open()
+
+    def _pick_sign_status(self, sign):
+        if self._dialog: self._dialog.dismiss()
+        from kivy.uix.boxlayout import BoxLayout as BL
+        layout = BL(orientation="vertical", spacing=8, size_hint_y=None)
+        layout.bind(minimum_height=layout.setter("height"))
+        layout.add_widget(MDLabel(text=f"改签为：{sign.get('teachTitle','')}", size_hint_y=None, height=40))
+        for st, label in [("1","已签到"),("2","迟到"),("3","请假"),("4","病假"),("5","事假")]:
+            btn = MDRaisedButton(text=label, size_hint=(1, None), height=45)
+            btn.bind(on_release=lambda x, s=sign, st=st: self._do_custom_sign(s, st))
+            layout.add_widget(btn)
+        self._dialog = MDDialog(title="选择状态", type="custom", content_cls=layout)
+        self._dialog.open()
+
+    def _do_custom_sign(self, sign, status_type):
+        if self._dialog: self._dialog.dismiss()
+        cid, ciid, coid = self._sign_ctx
+        client = self.app.client
+        payload = {
+            "classId": cid, "courseId": coid, "courseInfoId": ciid,
+            "signId": sign["signId"], "signResultType": status_type,
+            "teachId": sign.get("teachId",""),
+            "studentId": client.stu_id or "",
+            "studentName": client.user_info.get("nickName",""),
+            "studentNo": client.user_info.get("userName",""),
+        }
+        self.append(f">> 改签为{STATUS_MAP.get(status_type,status_type)}...")
+        def work():
+            r = do_sign_action(client, payload)
+            Clock.schedule_once(lambda dt: self.append(
+                f"  {'成功' if r['code']==200 else '失败'}: {r['msg']}"), 0)
         threading.Thread(target=work, daemon=True).start()
 
 
