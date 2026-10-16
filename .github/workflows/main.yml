@@ -21,25 +21,13 @@ jobs:
           mkdir -p "$P4A"
           git clone --depth 1 -b v2026.05.09 https://github.com/kivy/python-for-android.git "$P4A"
 
-          # patch：去掉 setup.py 顶层桌面专用 javac（Android 下 Java class 由 postbuild_arch 处理）
-          cat > "$P4A/pythonforandroid/recipes/pyjnius/no_desktop_javac.patch" <<'PATCH'
---- a/setup.py
-+++ b/setup.py
-@@ -78,7 +78,6 @@
-     except FileNotFoundError:
-         subprocess.check_call([
-             javac.replace('"', ''), '-target', source_level, '-source', source_level,
-             join('jnius', 'src', 'org', 'jnius', 'NativeInvocationHandler.java')
-         ])
- 
--compile_native_invocation_handler(JAVA)
-+# p4a: disabled desktop-only javac; Android handles Java classes via postbuild_arch
-PATCH
+          echo 'LS0tIGEvc2V0dXAucHkKKysrIGIvc2V0dXAucHkKQEAgLTc4LDcgKzc4LDYgQEAKICAgICBleGNlcHQgRmlsZU5vdEZvdW5kRXJyb3I6CiAgICAgICAgIHN1YnByb2Nlc3MuY2hlY2tfY2FsbChbCiAgICAgICAgICAgICBqYXZhYy5yZXBsYWNlKCciJywgJycpLCAnLXRhcmdldCcsIHNvdXJjZV9sZXZlbCwgJy1zb3VyY2UnLCBzb3VyY2VfbGV2ZWwsCiAgICAgICAgICAgICBqb2luKCdqbml1cycsICdzcmMnLCAnb3JnJywgJ2puaXVzJywgJ05hdGl2ZUludm9jYXRpb25IYW5kbGVyLmphdmEnKQogICAgICAgICBdKQogCi1jb21waWxlX25hdGl2ZV9pbnZvY2F0aW9uX2hhbmRsZXIoSkFWQSkKKyMgcDRhOiBkaXNhYmxlZCBkZXNrdG9wLW9ubHkgamF2YWM7IEFuZHJvaWQgaGFuZGxlcyBKYXZhIGNsYXNzZXMgdmlhIHBvc3RidWlsZF9hcmNoCg==' | base64 -d > "$P4A/pythonforandroid/recipes/pyjnius/no_desktop_javac.patch"
 
-          # 在 recipe patches 列表第一项加入这个 patch
           sed -i 's|    patches = \[|    patches = [\n        "no_desktop_javac.patch",|' "$P4A/pythonforandroid/recipes/pyjnius/__init__.py"
 
-          echo "=== patch 后的 recipe patches ==="
+          echo "=== patch 文件内容 ==="
+          cat "$P4A/pythonforandroid/recipes/pyjnius/no_desktop_javac.patch"
+          echo "=== recipe patches 列表 ==="
           grep -A6 "patches = \[" "$P4A/pythonforandroid/recipes/pyjnius/__init__.py"
 
       - name: 用官方镜像打包 APK
