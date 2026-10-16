@@ -38,36 +38,53 @@ class LoginScreen(MDScreen):
         super().__init__(**kw)
         self.name = "login"
         self.app = app
-        box = BoxLayout(orientation="vertical", padding=20, spacing=15)
 
-        box.add_widget(MDTopAppBar(title="智慧职教 · 登录"))
+        root = BoxLayout(orientation="vertical")
+        root.add_widget(MDTopAppBar(title="智慧职教 · 登录"))
+
+        scroll = ScrollView()
+        box = BoxLayout(orientation="vertical", padding=20, spacing=15,
+                        size_hint_y=None)
+        box.bind(minimum_height=box.setter("height"))
+
         box.add_widget(MDLabel(
-            text="① 用手机浏览器打开下方链接并登录：", theme_text_color="Primary"))
-        link_row = BoxLayout(orientation="horizontal", size_hint_y=None, height=80, spacing=6)
-        self.link = MDTextField(multiline=True, readonly=True)
-        self.link.text = LOGIN_URL
-        link_row.add_widget(self.link)
-        copy_btn = MDRaisedButton(text="复制链接", size_hint_x=None, width=90)
+            text="① 用手机浏览器打开下方链接并登录：",
+            theme_text_color="Primary", size_hint_y=None, height=30))
+
+        link_row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                             height=50, spacing=8)
+        self.link_label = MDLabel(text=LOGIN_URL, size_hint_x=1,
+                                  theme_text_color="Secondary")
+        link_row.add_widget(self.link_label)
+        copy_btn = MDRaisedButton(text="复制链接", size_hint_x=None, width=100)
         copy_btn.bind(on_release=lambda *_: self.copy_link())
         link_row.add_widget(copy_btn)
         box.add_widget(link_row)
+
         box.add_widget(MDLabel(
-            text="② 登录后复制浏览器地址栏整段网址，粘贴到这里：",
-            theme_text_color="Primary"))
-        input_row = BoxLayout(orientation="horizontal", size_hint_y=None, height=100, spacing=6)
-        self.input = MDTextField(hint_text="粘贴 http://127.0.0.1:9527/?token=... 这串网址",
-                                 multiline=True)
+            text="② 登录后复制浏览器地址栏网址，粘贴到这里：",
+            theme_text_color="Primary", size_hint_y=None, height=30))
+
+        input_row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                              height=60, spacing=8)
+        self.input = MDTextField(hint_text="粘贴 token 网址")
         input_row.add_widget(self.input)
-        paste_btn = MDRaisedButton(text="粘贴", size_hint_x=None, width=90)
+        paste_btn = MDRaisedButton(text="粘贴", size_hint_x=None, width=100)
         paste_btn.bind(on_release=lambda *_: self.do_paste())
         input_row.add_widget(paste_btn)
         box.add_widget(input_row)
-        self.status = MDLabel(text="尚未登录", theme_text_color="Error")
+
+        self.status = MDLabel(text="尚未登录", theme_text_color="Error",
+                             size_hint_y=None, height=40)
         box.add_widget(self.status)
+
         btn = MDRaisedButton(text="登 录", size_hint=(1, None), height=50)
         btn.bind(on_release=lambda *_: self.do_login())
         box.add_widget(btn)
-        self.add_widget(box)
+
+        scroll.add_widget(box)
+        root.add_widget(scroll)
+        self.add_widget(root)
 
     def copy_link(self):
         from kivy.core.clipboard import Clipboard
