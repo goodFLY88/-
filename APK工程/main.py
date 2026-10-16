@@ -9,6 +9,7 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.label import Label
 from kivymd.app import MDApp
 from kivymd.uix.screen import MDScreen
+from kivymd.uix.screenmanager import MDScreenManager
 from kivymd.uix.list import MDList, OneLineListItem
 from kivymd.uix.button import MDRaisedButton, MDFlatButton
 from kivymd.uix.textfield import MDTextField
@@ -237,19 +238,18 @@ class ICVEApp(MDApp):
         # 全局覆盖 KivyMD 所有字体样式为中文字体
         for k in list(self.theme_cls.font_styles.keys()):
             self.theme_cls.font_styles[k][0] = "NotoSansSC.ttf"
-        root = BoxLayout()
+        sm = MDScreenManager()
         self.login = LoginScreen(self)
         self.courses = CourseScreen(self)
         self.run = RunScreen(self)
         for s in (self.login, self.courses, self.run):
-            root.add_widget(s)
-        self.show("login")
-        return root
+            sm.add_widget(s)
+        self.sm = sm
+        sm.current = "login"
+        return sm
 
     def show(self, name):
-        for s in (self.login, self.courses, self.run):
-            s.opacity = 1 if s.name == name else 0
-            s.disabled = s.name != name
+        self.sm.current = name
         if name == "courses":
             self.courses.on_pre_enter()
 
