@@ -17,11 +17,11 @@ jobs:
 
       - name: 用官方镜像打包 APK
         run: |
-          docker run --rm \
+          docker run --rm --entrypoint bash \
             -v ${{ github.workspace }}:/project \
             -w /project/APK工程 \
             ghcr.io/kivy/buildozer:latest \
-            bash -c "buildozer -v android debug"
+            -c "buildozer -v android debug"
 
       - name: 修复产物权限
         run: sudo chmod -R 777 "APK工程/bin" || true
