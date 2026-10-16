@@ -197,6 +197,9 @@ class ICVEApp(MDApp):
     def build(self):
         self.theme_cls.theme_style = "Light"
         self.theme_cls.primary_palette = "Blue"
+        # 全局覆盖 KivyMD 所有字体样式为中文字体
+        for k in list(self.theme_cls.font_styles.keys()):
+            self.theme_cls.font_styles[k][0] = "NotoSansSC.ttf"
         root = BoxLayout()
         self.login = LoginScreen(self)
         self.courses = CourseScreen(self)
