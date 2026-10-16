@@ -44,36 +44,31 @@ class LoginScreen(MDScreen):
         root.add_widget(MDTopAppBar(title="智慧职教 · 登录"))
 
         scroll = ScrollView()
-        box = BoxLayout(orientation="vertical", padding=20, spacing=15,
+        box = BoxLayout(orientation="vertical", padding=20, spacing=20,
                         size_hint_y=None)
         box.bind(minimum_height=box.setter("height"))
 
         box.add_widget(MDLabel(
             text="① 用手机浏览器打开下方链接并登录：",
-            theme_text_color="Primary", size_hint_y=None, height=30))
+            theme_text_color="Primary", size_hint_y=None, height=40))
 
-        link_row = BoxLayout(orientation="horizontal", size_hint_y=None,
-                             height=50, spacing=8)
-        self.link_label = MDLabel(text=LOGIN_URL, size_hint_x=1,
-                                  theme_text_color="Secondary")
-        link_row.add_widget(self.link_label)
-        copy_btn = MDRaisedButton(text="复制链接", size_hint_x=None, width=100)
+        self.link_label = MDLabel(text=LOGIN_URL, size_hint_y=None,
+                                  height=70, theme_text_color="Secondary")
+        box.add_widget(self.link_label)
+        copy_btn = MDRaisedButton(text="复制链接", size_hint=(1, None), height=50)
         copy_btn.bind(on_release=lambda *_: self.copy_link())
-        link_row.add_widget(copy_btn)
-        box.add_widget(link_row)
+        box.add_widget(copy_btn)
 
         box.add_widget(MDLabel(
             text="② 登录后复制浏览器地址栏网址，粘贴到这里：",
-            theme_text_color="Primary", size_hint_y=None, height=30))
+            theme_text_color="Primary", size_hint_y=None, height=40))
 
-        input_row = BoxLayout(orientation="horizontal", size_hint_y=None,
-                              height=60, spacing=8)
-        self.input = MDTextField(hint_text="粘贴 token 网址")
-        input_row.add_widget(self.input)
-        paste_btn = MDRaisedButton(text="粘贴", size_hint_x=None, width=100)
+        self.input = MDTextField(hint_text="粘贴 token 网址",
+                                size_hint_y=None, height=60)
+        box.add_widget(self.input)
+        paste_btn = MDRaisedButton(text="粘贴", size_hint=(1, None), height=50)
         paste_btn.bind(on_release=lambda *_: self.do_paste())
-        input_row.add_widget(paste_btn)
-        box.add_widget(input_row)
+        box.add_widget(paste_btn)
 
         self.status = MDLabel(text="尚未登录", theme_text_color="Error",
                              size_hint_y=None, height=40)
