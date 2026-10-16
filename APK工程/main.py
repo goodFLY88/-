@@ -172,8 +172,8 @@ class RunScreen(MDScreen):
             btns.add_widget(b)
         box.add_widget(btns)
 
-        self.log = Label(size_hint_y=None, halign="left", valign="top",
-                         markup=True)
+        self.log = MDLabel(text="", size_hint_y=None, markup=True,
+                           halign="left", valign="top", theme_text_color="Primary")
         self.log.bind(texture_size=lambda w, s: setattr(w, "height", s[1]))
         sv = ScrollView()
         sv.add_widget(self.log)
