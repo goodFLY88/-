@@ -10,7 +10,7 @@ requirements = python3, kivy, kivymd==1.2.0, requests, pycryptodome, pyjnius
 orientation = portrait
 android.permissions = INTERNET
 android.accept_sdk_license = True
-p4a.branch = stable
+p4a.branch = master
 android.api = 33
 android.minapi = 21
 android.debug = 0
