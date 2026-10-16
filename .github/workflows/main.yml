@@ -15,6 +15,33 @@ jobs:
       - name: 拉取官方 buildozer 镜像
         run: docker pull ghcr.io/kivy/buildozer:latest
 
+      - name: 准备并 patch p4a
+        run: |
+          P4A="APK工程/.buildozer/android/platform/python-for-android"
+          mkdir -p "$P4A"
+          git clone --depth 1 -b v2026.05.09 https://github.com/kivy/python-for-android.git "$P4A"
+
+          # patch：去掉 setup.py 顶层桌面专用 javac（Android 下 Java class 由 postbuild_arch 处理）
+          cat > "$P4A/pythonforandroid/recipes/pyjnius/no_desktop_javac.patch" <<'PATCH'
+--- a/setup.py
++++ b/setup.py
+@@ -78,7 +78,6 @@
+     except FileNotFoundError:
+         subprocess.check_call([
+             javac.replace('"', ''), '-target', source_level, '-source', source_level,
+             join('jnius', 'src', 'org', 'jnius', 'NativeInvocationHandler.java')
+         ])
+ 
+-compile_native_invocation_handler(JAVA)
++# p4a: disabled desktop-only javac; Android handles Java classes via postbuild_arch
+PATCH
+
+          # 在 recipe patches 列表第一项加入这个 patch
+          sed -i 's|    patches = \[|    patches = [\n        "no_desktop_javac.patch",|' "$P4A/pythonforandroid/recipes/pyjnius/__init__.py"
+
+          echo "=== patch 后的 recipe patches ==="
+          grep -A6 "patches = \[" "$P4A/pythonforandroid/recipes/pyjnius/__init__.py"
+
       - name: 用官方镜像打包 APK
         run: |
           docker run --rm --entrypoint bash \
