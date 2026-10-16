@@ -31,11 +31,14 @@ LabelBase.register(name="Roboto",
                    fn_italic="NotoSansSC.ttf",
                    fn_bolditalic="NotoSansSC.ttf")
 
-def make_toolbar(title):
-    return MDTopAppBar(title=title)
+def topbar(title):
+    bar = MDTopAppBar(title=title)
+    bar.md_bg_color = [1, 1, 1, 1]
+    bar.specific_text_color = [0.2, 0.2, 0.2, 1]
+    return bar
 
 def menu_button(app):
-    b = MDFlatButton(text="菜单菜单", size_hint=(None, None), size=(100, 35), pos_hint={"left": 1})
+    b = MDFlatButton(text="菜单", size_hint=(None, None), size=(80, 35), pos_hint={"left": 1})
     b.bind(on_release=lambda *_: app.nav_drawer.set_state("open"))
     return b
 
@@ -96,7 +99,7 @@ class LoginScreen(MDScreen):
         self.name = "login"
         self.app = app
         root = BoxLayout(orientation="vertical")
-        root.add_widget(MDTopAppBar(title="智慧职教 · 登录"))
+        root.add_widget(topbar("智慧职教 · 登录"))
         scroll = ScrollView()
         box = BoxLayout(orientation="vertical", padding=20, spacing=15, size_hint_y=None)
         box.bind(minimum_height=box.setter("height"))
@@ -192,7 +195,7 @@ class DashboardScreen(MDScreen):
         self.name = "dashboard"
         self.app = app
         root = BoxLayout(orientation="vertical")
-        root.add_widget(MDTopAppBar(title="控制台"))
+        root.add_widget(topbar("控制台"))
         root.add_widget(menu_button(app))
         scroll = ScrollView()
         box = BoxLayout(orientation="vertical", padding=20, spacing=15, size_hint_y=None)
@@ -225,7 +228,7 @@ class AccountsScreen(MDScreen):
         self.name = "accounts"
         self.app = app
         root = BoxLayout(orientation="vertical")
-        root.add_widget(MDTopAppBar(title="账号管理"))
+        root.add_widget(topbar("账号管理"))
         root.add_widget(menu_button(app))
         scroll = ScrollView()
         self.list = MDList()
@@ -258,7 +261,7 @@ class CourseSelectScreen(MDScreen):
         self.courses = []
         self.selected_course = None
         root = BoxLayout(orientation="vertical")
-        root.add_widget(MDTopAppBar(title=title))
+        root.add_widget(topbar(title))
         root.add_widget(menu_button(app))
         # 副标题
         root.add_widget(MDLabel(text=subtitle, theme_text_color="Secondary",
