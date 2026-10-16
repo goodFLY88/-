@@ -43,21 +43,41 @@ class LoginScreen(MDScreen):
         box.add_widget(MDTopAppBar(title="智慧职教 · 登录"))
         box.add_widget(MDLabel(
             text="① 用手机浏览器打开下方链接并登录：", theme_text_color="Primary"))
-        link = MDTextField(multiline=True, readonly=True)
-        link.text = LOGIN_URL
-        box.add_widget(link)
+        link_row = BoxLayout(orientation="horizontal", size_hint_y=None, height=80, spacing=6)
+        self.link = MDTextField(multiline=True, readonly=True)
+        self.link.text = LOGIN_URL
+        link_row.add_widget(self.link)
+        copy_btn = MDRaisedButton(text="复制链接", size_hint_x=None, width=90)
+        copy_btn.bind(on_release=lambda *_: self.copy_link())
+        link_row.add_widget(copy_btn)
+        box.add_widget(link_row)
         box.add_widget(MDLabel(
             text="② 登录后复制浏览器地址栏整段网址，粘贴到这里：",
             theme_text_color="Primary"))
+        input_row = BoxLayout(orientation="horizontal", size_hint_y=None, height=100, spacing=6)
         self.input = MDTextField(hint_text="粘贴 http://127.0.0.1:9527/?token=... 这串网址",
                                  multiline=True)
-        box.add_widget(self.input)
+        input_row.add_widget(self.input)
+        paste_btn = MDRaisedButton(text="粘贴", size_hint_x=None, width=90)
+        paste_btn.bind(on_release=lambda *_: self.do_paste())
+        input_row.add_widget(paste_btn)
+        box.add_widget(input_row)
         self.status = MDLabel(text="尚未登录", theme_text_color="Error")
         box.add_widget(self.status)
         btn = MDRaisedButton(text="登 录", size_hint=(1, None), height=50)
         btn.bind(on_release=lambda *_: self.do_login())
         box.add_widget(btn)
         self.add_widget(box)
+
+    def copy_link(self):
+        from kivy.core.clipboard import Clipboard
+        Clipboard.copy(LOGIN_URL)
+        self.status.text = "链接已复制，去浏览器粘贴打开登录"
+
+    def do_paste(self):
+        from kivy.core.clipboard import Clipboard
+        self.input.text = Clipboard.paste().strip()
+        self.status.text = "已粘贴，点登录"
 
     def do_login(self):
         raw = self.input.text.strip()
