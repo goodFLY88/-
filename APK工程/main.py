@@ -17,7 +17,6 @@ from kivymd.uix.label import MDLabel
 from kivymd.uix.dialog import MDDialog
 from kivymd.uix.card import MDCard
 from kivymd.uix.navigationdrawer import MDNavigationDrawer, MDNavigationLayout
-from kivymd.uix.separator import MDSeparator
 
 from zjy_client import ZjyClient, SSO_BASE
 from auth import _exchange_token
@@ -44,13 +43,16 @@ def section_header(text):
     box = BoxLayout(orientation="vertical", size_hint_y=None, height=38,
                     padding=(SPACE, 4, SPACE, 0), spacing=2)
     box.add_widget(MDLabel(text=text, theme_text_color="Secondary", size_hint_y=None, height=20))
-    box.add_widget(MDSeparator())
+    box.add_widget(BoxLayout(size_hint_y=None, height=1, md_bg_color=[0.85,0.85,0.85,1]))
     return box
 
 
 def make_card(padding=SPACE):
-    return MDCard(orientation="vertical", padding=padding, spacing=SMALL,
-                  radius=[12, 12, 12, 12], elevation=1)
+    card = MDCard(radius=[12, 12, 12, 12], elevation=1, padding=padding)
+    box = BoxLayout(orientation="vertical", spacing=SMALL)
+    card.add_widget(box)
+    card._inner = box
+    return card
 
 
 def topbar(title):
@@ -129,28 +131,28 @@ class LoginScreen(MDScreen):
         outer.bind(minimum_height=outer.setter("height"))
 
         card = make_card()
-        card.add_widget(MDLabel(text="① 用浏览器打开链接登录", theme_text_color="Primary",
+        card._inner.add_widget(MDLabel(text="① 用浏览器打开链接登录", theme_text_color="Primary",
                                 size_hint_y=None, height=28))
         self.link_label = MDLabel(text=LOGIN_URL, size_hint_y=None, height=70,
                                   theme_text_color="Secondary")
-        card.add_widget(self.link_label)
+        card._inner.add_widget(self.link_label)
         copy_btn = MDRaisedButton(text="复制链接", size_hint=(1, None), height=42)
         copy_btn.bind(on_release=lambda *_: self.copy_link())
-        card.add_widget(copy_btn)
-        card.add_widget(MDSeparator())
-        card.add_widget(MDLabel(text="② 复制地址栏网址粘贴到这里", theme_text_color="Primary",
+        card._inner.add_widget(copy_btn)
+        card._inner.add_widget(BoxLayout(size_hint_y=None, height=1, md_bg_color=[0.85,0.85,0.85,1]))
+        card._inner.add_widget(MDLabel(text="② 复制地址栏网址粘贴到这里", theme_text_color="Primary",
                                 size_hint_y=None, height=28))
         self.input = MDTextField(hint_text="粘贴 token 网址", size_hint_y=None, height=50)
-        card.add_widget(self.input)
+        card._inner.add_widget(self.input)
         paste_btn = MDRaisedButton(text="粘贴", size_hint=(1, None), height=42)
         paste_btn.bind(on_release=lambda *_: self.do_paste())
-        card.add_widget(paste_btn)
+        card._inner.add_widget(paste_btn)
         self.status = MDLabel(text="尚未登录", theme_text_color="Error",
                               size_hint_y=None, height=28)
-        card.add_widget(self.status)
+        card._inner.add_widget(self.status)
         login_btn = MDRaisedButton(text="登 录", size_hint=(1, None), height=48)
         login_btn.bind(on_release=lambda *_: self.do_login())
-        card.add_widget(login_btn)
+        card._inner.add_widget(login_btn)
         outer.add_widget(card)
 
         outer.add_widget(section_header("已保存账号"))
@@ -236,7 +238,7 @@ class DashboardScreen(MDScreen):
 
         card = make_card()
         self.welcome = MDLabel(text="", theme_text_color="Primary", size_hint_y=None, height=60)
-        card.add_widget(self.welcome)
+        card._inner.add_widget(self.welcome)
         outer.add_widget(card)
 
         outer.add_widget(section_header("功能"))
@@ -250,7 +252,7 @@ class DashboardScreen(MDScreen):
         ]:
             item = TwoLineListItem(text=label, secondary_text=desc)
             item.bind(on_release=lambda x, t=target: self.app.goto(t))
-            func_card.add_widget(item)
+            func_card._inner.add_widget(item)
         outer.add_widget(func_card)
         scroll.add_widget(outer)
         root.add_widget(scroll)
@@ -324,24 +326,24 @@ class CourseSelectScreen(MDScreen):
         action_card = make_card()
         self.action_btn = MDRaisedButton(text=action_label, size_hint=(1, None), height=46)
         self.action_btn.bind(on_release=lambda *_: self.do_action())
-        action_card.add_widget(self.action_btn)
+        action_card._inner.add_widget(self.action_btn)
         if action_key == "sign":
             self.custom_btn = MDRaisedButton(text="自定义改签", size_hint=(1, None), height=42)
             self.custom_btn.md_bg_color = [0.85, 0.85, 0.85, 1]
             self.custom_btn.text_color = [0.15, 0.15, 0.15, 1]
             self.custom_btn.bind(on_release=lambda *_: self.custom_sign())
-            action_card.add_widget(self.custom_btn)
+            action_card._inner.add_widget(self.custom_btn)
             self.monitor_btn = MDRaisedButton(text="启动自动监听", size_hint=(1, None), height=42)
             self.monitor_btn.md_bg_color = [0.2, 0.7, 0.3, 1]
             self.monitor_btn.bind(on_release=lambda *_: self.toggle_monitor())
-            action_card.add_widget(self.monitor_btn)
+            action_card._inner.add_widget(self.monitor_btn)
         outer.add_widget(action_card)
 
         outer.add_widget(section_header("运行日志"))
         log_card = make_card()
         self.log = MDLabel(text="选择课程后点按钮开始", size_hint_y=None,
                            halign="left", valign="top", theme_text_color="Primary", height=120)
-        log_card.add_widget(self.log)
+        log_card._inner.add_widget(self.log)
         outer.add_widget(log_card)
 
         scroll.add_widget(outer)
