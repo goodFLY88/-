@@ -486,6 +486,9 @@ class ICVEApp(MDApp):
     def on_start(self):
         Clock.schedule_once(lambda dt: self._set_status_bar_color(), 1.0)
 
+    def on_resume(self):
+        Clock.schedule_once(lambda dt: self._set_status_bar_color(), 0.3)
+
     def _set_status_bar_color(self):
         try:
             from android import mActivity
