@@ -376,17 +376,20 @@ class CourseSelectScreen(MDScreen):
         threading.Thread(target=work, daemon=True).start()
 
     def _show_sign_dialog(self, items, cid, ciid, coid):
-        layout = BoxLayout(orientation="vertical", spacing=5, size_hint_y=None)
+        layout = BoxLayout(orientation="vertical", spacing=2, size_hint_y=None)
         layout.bind(minimum_height=layout.setter("height"))
-        layout.add_widget(MDLabel(text="选择签到记录（标注当前状态）：", size_hint_y=None, height=40))
+        layout.add_widget(MDLabel(text="选择签到记录（括号内为当前状态）：",
+                                  theme_text_color="Secondary", size_hint_y=None, height=35))
         self._sign_ctx = (cid, ciid, coid)
         for s in items:
             st = str(s.get("myStatus", "0"))
             st_label = STATUS_MAP.get(st, st)
-            btn = MDFlatButton(text=f"[{s.get('teachDate','')}] {s.get('teachTitle','?')}  [{st_label}]",
-                               size_hint=(1, None), height=42)
-            btn.bind(on_release=lambda x, sig=s: self._pick_sign_status(sig))
-            layout.add_widget(btn)
+            item = TwoLineListItem(
+                text=f"{s.get('teachDate','')}  {s.get('teachTitle','?')}",
+                secondary_text=f"当前状态：{st_label}  —— 点击改签",
+            )
+            item.bind(on_release=lambda x, sig=s: self._pick_sign_status(sig))
+            layout.add_widget(item)
         self._dialog = MDDialog(title="自定义改签", type="custom", content_cls=layout)
         self._dialog.open()
 
@@ -394,12 +397,22 @@ class CourseSelectScreen(MDScreen):
         if self._dialog: self._dialog.dismiss()
         layout = BoxLayout(orientation="vertical", spacing=8, size_hint_y=None)
         layout.bind(minimum_height=layout.setter("height"))
-        layout.add_widget(MDLabel(text=f"改签为：{sign.get('teachTitle','')}", size_hint_y=None, height=40))
+        layout.add_widget(MDLabel(text=f"{sign.get('teachTitle','')}", theme_text_color="Primary",
+                                 size_hint_y=None, height=35))
+        layout.add_widget(MDLabel(text="改为：", theme_text_color="Secondary",
+                                 size_hint_y=None, height=30))
+        from kivy.uix.gridlayout import GridLayout
+        grid = GridLayout(cols=2, spacing=8, size_hint_y=None)
+        grid.bind(minimum_height=grid.setter("height"))
         for st, label in [("0","未签到"),("1","已签到"),("2","迟到"),("3","请假"),("4","病假"),("5","事假")]:
-            btn = MDRaisedButton(text=label, size_hint=(1, None), height=45)
+            btn = MDRaisedButton(text=label, size_hint=(1, None), height=50)
             btn.bind(on_release=lambda x, s=sign, st=st: self._do_custom_sign(s, st))
-            layout.add_widget(btn)
-        self._dialog = MDDialog(title="选择状态", type="custom", content_cls=layout)
+            grid.add_widget(btn)
+        layout.add_widget(grid)
+        cancel = MDFlatButton(text="取消", size_hint=(1, None), height=40)
+        cancel.bind(on_release=lambda *_: self._dialog.dismiss())
+        layout.add_widget(cancel)
+        self._dialog = MDDialog(title="选择改签状态", type="custom", content_cls=layout)
         self._dialog.open()
 
     def _do_custom_sign(self, sign, status_type):
