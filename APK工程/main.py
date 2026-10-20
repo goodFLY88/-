@@ -15,6 +15,7 @@ from kivymd.uix.textfield import MDTextField
 from kivymd.uix.toolbar import MDTopAppBar
 from kivymd.uix.label import MDLabel
 from kivymd.uix.dialog import MDDialog
+from kivymd.uix.card import MDCard
 from kivymd.uix.navigationdrawer import MDNavigationDrawer, MDNavigationLayout
 
 from zjy_client import ZjyClient, SSO_BASE
@@ -54,11 +55,12 @@ class SidebarMenu(BoxLayout):
         self.spacing = 0
         self.app = app
         # 顶部标题栏
-        header = BoxLayout(orientation="vertical", size_hint_y=None, height=100,
-                           padding=(20, 20, 20, 10), spacing=5)
-        header.md_bg_color = [0.13, 0.59, 0.95, 1]
+        header = MDCard(orientation="vertical", size_hint_y=None, height=100,
+                        padding=(20, 15, 20, 10), spacing=5,
+                        md_bg_color=[0.13, 0.59, 0.95, 1], radius=[0,0,0,0],
+                        elevation=0)
         header.add_widget(MDLabel(text="ICVE 学习助手", theme_text_color="Custom",
-                                  text_color=[1, 1, 1, 1], size_hint_y=None, height=35,
+                                  text_color=[1, 1, 1, 1], size_hint_y=None, height=40,
                                   font_style="H6"))
         header.add_widget(MDLabel(text="智慧职教工具", theme_text_color="Custom",
                                   text_color=[0.9, 0.9, 0.9, 1], size_hint_y=None, height=25))
@@ -288,8 +290,8 @@ class CourseSelectScreen(MDScreen):
         root.add_widget(self.action_btn)
         if action_key == "sign":
             self.custom_btn = MDRaisedButton(text="自定义改签", size_hint=(1, None), height=45)
-            self.custom_btn.md_bg_color = [0.95, 0.95, 0.95, 1]
-            self.custom_btn.specific_text_color = [0.2, 0.2, 0.2, 1]
+            self.custom_btn.md_bg_color = [0.9, 0.9, 0.9, 1]
+            self.custom_btn.text_color = [0.15, 0.15, 0.15, 1]
             self.custom_btn.bind(on_release=lambda *_: self.custom_sign())
             root.add_widget(self.custom_btn)
         # 日志标题
