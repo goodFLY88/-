@@ -294,6 +294,12 @@ class CourseSelectScreen(MDScreen):
             self.custom_btn.text_color = [0.15, 0.15, 0.15, 1]
             self.custom_btn.bind(on_release=lambda *_: self.custom_sign())
             root.add_widget(self.custom_btn)
+            self.monitor_btn = MDRaisedButton(text="启动自动监听签到", size_hint=(1, None), height=45)
+            self.monitor_btn.md_bg_color = [0.2, 0.7, 0.3, 1]
+            self.monitor_btn.bind(on_release=lambda *_: self.toggle_monitor())
+            root.add_widget(self.monitor_btn)
+            self._monitoring = False
+            self._monitor_thread = None
         # 日志标题
         root.add_widget(MDLabel(text="运行日志", theme_text_color="Secondary",
                                 size_hint_y=None, height=30, padding=(15, 5)))
@@ -377,6 +383,56 @@ class CourseSelectScreen(MDScreen):
             except Exception as e:
                 Clock.schedule_once(lambda dt: self.append(f"!! 出错: {e}"), 0)
         threading.Thread(target=work, daemon=True).start()
+
+    def toggle_monitor(self):
+        if self._monitoring:
+            self._monitoring = False
+            self.monitor_btn.text = "启动自动监听签到"
+            self.monitor_btn.md_bg_color = [0.2, 0.7, 0.3, 1]
+            self.append(">> 已停止自动监听")
+        else:
+            self._monitoring = True
+            self.monitor_btn.text = "停止监听"
+            self.monitor_btn.md_bg_color = [0.9, 0.3, 0.2, 1]
+            self.append(">> 启动自动监听（每30秒扫描所有课程）")
+            self._monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
+            self._monitor_thread.start()
+
+    def _monitor_loop(self):
+        import time
+        seen_signs = set()
+        first = True
+        while self._monitoring:
+            try:
+                courses = self.app.client.get_my_courses()
+                for c in courses:
+                    cid = c.get("classId",""); ciid = c.get("courseInfoId",""); coid = c.get("courseId","")
+                    signs = get_signs(self.app.client, cid, ciid, coid)
+                    for s in signs:
+                        key = (cid, s.get("signId"))
+                        not_signed = str(s.get("myStatus","0")) == "0"
+                        if not_signed and key not in seen_signs:
+                            seen_signs.add(key)
+                            sign_type = s.get("signType","?")
+                            type_map = {"1":"普通","2":"二维码","3":"手势","4":"位置","5":"人脸"}
+                            if first:
+                                continue
+                            Clock.schedule_once(lambda dt, c=c, s=s, t=sign_type: self.append(
+                                f"[发现新签到] {c.get('courseName','?')} {type_map.get(t,t)}签到 {s.get('teachTitle','?')}"), 0)
+                            # 自动签
+                            not_signed_list = [s]
+                            result = batch_sign(self.app.client, not_signed_list, cid, ciid, coid)
+                            for d in result.get("details", []):
+                                Clock.schedule_once(lambda dt, d=d, c=c: self.append(
+                                    f"  {c.get('courseName','?')}: {d['result']} {d['msg']}"), 0)
+                first = False
+            except Exception as e:
+                Clock.schedule_once(lambda dt, e=e: self.append(f"[监听] 出错: {e}"), 0)
+            # 等待30秒
+            for _ in range(30):
+                if not self._monitoring:
+                    break
+                time.sleep(1)
 
     def custom_sign(self):
         if not self.selected_course:
