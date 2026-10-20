@@ -55,15 +55,15 @@ class SidebarMenu(BoxLayout):
         self.spacing = 0
         self.app = app
         # 顶部标题栏
-        header = MDCard(orientation="vertical", size_hint_y=None, height=100,
-                        padding=(20, 15, 20, 10), spacing=5,
+        header = MDCard(size_hint_y=None, height=110,
                         md_bg_color=[0.13, 0.59, 0.95, 1], radius=[0,0,0,0],
-                        elevation=0)
-        header.add_widget(MDLabel(text="ICVE 学习助手", theme_text_color="Custom",
-                                  text_color=[1, 1, 1, 1], size_hint_y=None, height=40,
-                                  font_style="H6"))
-        header.add_widget(MDLabel(text="智慧职教工具", theme_text_color="Custom",
-                                  text_color=[0.9, 0.9, 0.9, 1], size_hint_y=None, height=25))
+                        elevation=0, padding=(20, 15, 20, 15))
+        header_box = BoxLayout(orientation="vertical", spacing=8)
+        header_box.add_widget(MDLabel(text="ICVE 学习助手", theme_text_color="Custom",
+                                      text_color=[1, 1, 1, 1], size_hint_y=None, height=40))
+        header_box.add_widget(MDLabel(text="智慧职教工具", theme_text_color="Custom",
+                                      text_color=[0.9, 0.9, 0.9, 1], size_hint_y=None, height=25))
+        header.add_widget(header_box)
         self.add_widget(header)
         # 菜单内容
         content = BoxLayout(orientation="vertical", padding=(5, 10, 5, 10), spacing=2)
@@ -278,7 +278,7 @@ class CourseSelectScreen(MDScreen):
         root.add_widget(menu_button(app))
         # 副标题
         root.add_widget(MDLabel(text=subtitle, theme_text_color="Secondary",
-                                size_hint_y=None, height=40, padding=(15, 5)))
+                                size_hint_y=None, height=50, padding=(15, 10)))
         # 课程列表
         self.list = MDList()
         scroll = ScrollView(size_hint_y=0.3)
@@ -482,6 +482,19 @@ class ICVEApp(MDApp):
         self.sm = sm
         sm.current = "login"
         return self.nav_layout
+
+    def on_start(self):
+        self._set_status_bar_color("#2196F3")
+
+    def _set_status_bar_color(self, hex_color):
+        try:
+            from jnius import autoclass
+            PythonActivity = autoclass("org.kivy.android.PythonActivity")
+            Color = autoclass("android.graphics.Color")
+            Window = PythonActivity.mActivity.getWindow()
+            Window.setStatusBarColor(Color.parseColor(hex_color))
+        except Exception:
+            pass
 
     def goto(self, name):
         self.sidebar.refresh()
