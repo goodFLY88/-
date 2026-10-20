@@ -17,7 +17,7 @@ from kivymd.uix.label import MDLabel
 from kivymd.uix.dialog import MDDialog
 from kivymd.uix.card import MDCard
 from kivymd.uix.navigationdrawer import MDNavigationDrawer, MDNavigationLayout
-from kivymd.uix.divider import MDDivider
+from kivymd.uix.separator import MDSeparator
 
 from zjy_client import ZjyClient, SSO_BASE
 from auth import _exchange_token
@@ -44,7 +44,7 @@ def section_header(text):
     box = BoxLayout(orientation="vertical", size_hint_y=None, height=38,
                     padding=(SPACE, 4, SPACE, 0), spacing=2)
     box.add_widget(MDLabel(text=text, theme_text_color="Secondary", size_hint_y=None, height=20))
-    box.add_widget(MDDivider())
+    box.add_widget(MDSeparator())
     return box
 
 
@@ -137,7 +137,7 @@ class LoginScreen(MDScreen):
         copy_btn = MDRaisedButton(text="复制链接", size_hint=(1, None), height=42)
         copy_btn.bind(on_release=lambda *_: self.copy_link())
         card.add_widget(copy_btn)
-        card.add_widget(MDDivider())
+        card.add_widget(MDSeparator())
         card.add_widget(MDLabel(text="② 复制地址栏网址粘贴到这里", theme_text_color="Primary",
                                 size_hint_y=None, height=28))
         self.input = MDTextField(hint_text="粘贴 token 网址", size_hint_y=None, height=50)
