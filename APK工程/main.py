@@ -395,7 +395,7 @@ class CourseSelectScreen(MDScreen):
         layout = BoxLayout(orientation="vertical", spacing=8, size_hint_y=None)
         layout.bind(minimum_height=layout.setter("height"))
         layout.add_widget(MDLabel(text=f"改签为：{sign.get('teachTitle','')}", size_hint_y=None, height=40))
-        for st, label in [("1","已签到"),("2","迟到"),("3","请假"),("4","病假"),("5","事假")]:
+        for st, label in [("0","未签到"),("1","已签到"),("2","迟到"),("3","请假"),("4","病假"),("5","事假")]:
             btn = MDRaisedButton(text=label, size_hint=(1, None), height=45)
             btn.bind(on_release=lambda x, s=sign, st=st: self._do_custom_sign(s, st))
             layout.add_widget(btn)
