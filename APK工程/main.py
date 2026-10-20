@@ -484,15 +484,15 @@ class ICVEApp(MDApp):
         return self.nav_layout
 
     def on_start(self):
-        self._set_status_bar_color("#2196F3")
+        Clock.schedule_once(lambda dt: self._set_status_bar_color("#2196F3"), 0.5)
 
     def _set_status_bar_color(self, hex_color):
         try:
             from jnius import autoclass
             PythonActivity = autoclass("org.kivy.android.PythonActivity")
+            activity = PythonActivity.mActivity
             Color = autoclass("android.graphics.Color")
-            Window = PythonActivity.mActivity.getWindow()
-            Window.setStatusBarColor(Color.parseColor(hex_color))
+            activity.getWindow().setStatusBarColor(Color.parseColor(hex_color))
         except Exception:
             pass
 
