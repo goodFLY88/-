@@ -50,13 +50,23 @@ class SidebarMenu(BoxLayout):
     def __init__(self, app, **kw):
         super().__init__(**kw)
         self.orientation = "vertical"
-        self.padding = (10, 20, 10, 10)
-        self.spacing = 2
+        self.padding = 0
+        self.spacing = 0
         self.app = app
-        self.add_widget(MDLabel(text="ICVE 学习助手", theme_text_color="Primary",
-                                size_hint_y=None, height=50, font_style="H6"))
-        self.add_widget(MDLabel(text="主功能", theme_text_color="Secondary",
-                                size_hint_y=None, height=30))
+        # 顶部标题栏
+        header = BoxLayout(orientation="vertical", size_hint_y=None, height=100,
+                           padding=(20, 20, 20, 10), spacing=5)
+        header.md_bg_color = [0.13, 0.59, 0.95, 1]
+        header.add_widget(MDLabel(text="ICVE 学习助手", theme_text_color="Custom",
+                                  text_color=[1, 1, 1, 1], size_hint_y=None, height=35,
+                                  font_style="H6"))
+        header.add_widget(MDLabel(text="智慧职教工具", theme_text_color="Custom",
+                                  text_color=[0.9, 0.9, 0.9, 1], size_hint_y=None, height=25))
+        self.add_widget(header)
+        # 菜单内容
+        content = BoxLayout(orientation="vertical", padding=(5, 10, 5, 10), spacing=2)
+        content.add_widget(MDLabel(text="主功能", theme_text_color="Secondary",
+                                   size_hint_y=None, height=30, padding=(15, 0)))
         for label, target in [
             ("控制台", "dashboard"),
             ("一键刷课", "speed"),
@@ -66,19 +76,20 @@ class SidebarMenu(BoxLayout):
         ]:
             btn = OneLineListItem(text=label)
             btn.bind(on_release=lambda x, t=target: self._nav(t))
-            self.add_widget(btn)
-        self.add_widget(MDLabel(text="系统", theme_text_color="Secondary",
-                                size_hint_y=None, height=30))
+            content.add_widget(btn)
+        content.add_widget(MDLabel(text="系统", theme_text_color="Secondary",
+                                   size_hint_y=None, height=30, padding=(15, 0)))
         for label, target in [
             ("账号管理", "accounts"),
             ("退出登录", "login"),
         ]:
             btn = OneLineListItem(text=label)
             btn.bind(on_release=lambda x, t=target: self._nav(t))
-            self.add_widget(btn)
+            content.add_widget(btn)
         self.status_label = MDLabel(text="● 未登录", theme_text_color="Error",
-                                    size_hint_y=None, height=40)
-        self.add_widget(self.status_label)
+                                    size_hint_y=None, height=40, padding=(15, 0))
+        content.add_widget(self.status_label)
+        self.add_widget(content)
 
     def _nav(self, target):
         self.app.nav_drawer.set_state("close")
@@ -268,7 +279,7 @@ class CourseSelectScreen(MDScreen):
                                 size_hint_y=None, height=40, padding=(15, 5)))
         # 课程列表
         self.list = MDList()
-        scroll = ScrollView(size_hint_y=0.35)
+        scroll = ScrollView(size_hint_y=0.3)
         scroll.add_widget(self.list)
         root.add_widget(scroll)
         # 操作按钮
@@ -276,13 +287,18 @@ class CourseSelectScreen(MDScreen):
         self.action_btn.bind(on_release=lambda *_: self.do_action())
         root.add_widget(self.action_btn)
         if action_key == "sign":
-            self.custom_btn = MDFlatButton(text="自定义改签", size_hint=(1, None), height=40)
+            self.custom_btn = MDRaisedButton(text="自定义改签", size_hint=(1, None), height=45)
+            self.custom_btn.md_bg_color = [0.95, 0.95, 0.95, 1]
+            self.custom_btn.specific_text_color = [0.2, 0.2, 0.2, 1]
             self.custom_btn.bind(on_release=lambda *_: self.custom_sign())
             root.add_widget(self.custom_btn)
+        # 日志标题
+        root.add_widget(MDLabel(text="运行日志", theme_text_color="Secondary",
+                                size_hint_y=None, height=30, padding=(15, 5)))
         # 日志
         self.log = MDLabel(text="选择课程后点按钮开始", size_hint_y=None, markup=True,
                            halign="left", valign="top", theme_text_color="Primary", padding=(10, 10))
-        self.log.bind(texture_size=lambda w, s: setattr(w, "height", max(s[1], 120)))
+        self.log.bind(texture_size=lambda w, s: setattr(w, "height", max(s[1], 150)))
         sv = ScrollView()
         sv.add_widget(self.log)
         root.add_widget(sv)
