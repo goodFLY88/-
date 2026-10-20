@@ -484,17 +484,19 @@ class ICVEApp(MDApp):
         return self.nav_layout
 
     def on_start(self):
-        Clock.schedule_once(lambda dt: self._set_status_bar_color("#2196F3"), 0.5)
+        Clock.schedule_once(lambda dt: self._set_status_bar_color(), 1.0)
 
-    def _set_status_bar_color(self, hex_color):
+    def _set_status_bar_color(self):
         try:
+            from android import mActivity
             from jnius import autoclass
-            PythonActivity = autoclass("org.kivy.android.PythonActivity")
-            activity = PythonActivity.mActivity
             Color = autoclass("android.graphics.Color")
-            activity.getWindow().setStatusBarColor(Color.parseColor(hex_color))
-        except Exception:
-            pass
+            mActivity.getWindow().setStatusBarColor(Color.parseColor("#2196F3"))
+        except Exception as e:
+            try:
+                self.login.status.text = f"状态栏设置失败: {e}"
+            except Exception:
+                pass
 
     def goto(self, name):
         self.sidebar.refresh()
