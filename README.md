@@ -111,6 +111,16 @@ python mobile.py          # 或 python login_mobile.py 只登录
 19. GUI 登录线程、改签线程未捕获异常 —— 已补 try/except
 20. GUI 刷课接入 `progress_cb`，日志实时显示阶段进度；监听线程退出时停止
 
+**CI 假绿（推送后实测发现并修复）**
+21. 新版 `kivy/buildozer` 镜像在 root 下会交互询问 "Are you sure you want to
+    continue [y/n]?"，CI 无 stdin → 6 次重试全部 `EOFError` 崩溃；而旧工作流
+    结构下"构建全失败也返回 success"，导致长期假绿、实际没有 APK 产物。
+    已改为 `yes | buildozer` 自动应答 + 结尾强制校验 `bin/*.apk` 存在 +
+    `if-no-files-found: error`，没有产物就让 Job 失败。
+
+> 原版代码已完整保留在分支 `backup-before-optimize-20261022`，随时可还原：
+> `git checkout backup-before-optimize-20261022`
+
 ## 五、安全与合规提醒
 
 - `accounts.json` 保存登录 Token，已设置 600 权限并加入 `.gitignore`，
