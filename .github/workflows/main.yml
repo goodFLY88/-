@@ -20,7 +20,6 @@ jobs:
       - name: 用官方镜像打包 APK（首次跑通到 pyjnius 失败后 patch 再续）
         run: |
           docker run --rm --entrypoint bash \
-            -e LDFLAGS="-Wl,-z,max-page-size=16384" \
             -v ${{ github.workspace }}:/project \
             -w /project \
             ghcr.io/kivy/buildozer:latest \
