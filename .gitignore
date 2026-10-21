@@ -1,0 +1,27 @@
+# 运行时生成的账号文件(含登录 Token,严禁提交!)
+accounts.json
+accounts.json.*
+*.tmp
+
+# 打包产物
+bin/
+*.apk
+.buildozer/
+local.properties
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 系统/编辑器
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# 题库等可选数据(体积大,按需自行放入)
+题库/
+*.tar.gz

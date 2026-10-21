@@ -1,0 +1,57 @@
+name: 打包APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build for Android
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 拉取官方 buildozer 镜像
+        run: docker pull ghcr.io/kivy/buildozer:latest
+
+      # 优化版:直接在仓库根目录打包(单一代码源),不再切到 APK工程/
+      - name: 用官方镜像打包 APK（首次跑通到 pyjnius 失败后 patch 再续）
+        run: |
+          docker run --rm --entrypoint bash \
+            -v ${{ github.workspace }}:/project \
+            -w /project \
+            ghcr.io/kivy/buildozer:latest \
+            -c '
+              set -x
+              git config --global --add safe.directory "*"
+
+              # 循环：每次失败后 patch，再重试
+              for i in 1 2 3 4 5 6; do
+                echo "=== build attempt $i ==="
+                if buildozer -v android debug; then
+                  echo "=== build succeeded ==="
+                  break
+                fi
+                echo "=== patching ==="
+                # 1) sed 所有架构的 pyjnius setup.py，去掉顶层桌面 javac
+                find .buildozer -path "*pyjnius*/setup.py" 2>/dev/null | while read -r SETUP_PY; do
+                  sed -i "s/^compile_native_invocation_handler(JAVA)/# p4a: disabled desktop-only javac call/" "$SETUP_PY"
+                done
+                # 2) 删除损坏的 build venv（Python 3.14 ensurepip 旧 pip 不兼容）
+                rm -rf .buildozer/android/platform/build-*/build/venv 2>/dev/null || true
+                # 3) patch p4a: 创建 venv 时加 --upgrade-deps 装新 pip
+                P4A_DIR=".buildozer/android/platform/python-for-android"
+                find "$P4A_DIR" -name "*.py" -exec sed -i "s/-m venv venv/-m venv venv --upgrade-deps/g" {} \; 2>/dev/null || true
+              done
+            '
+
+      - name: 修复产物权限
+        run: sudo chmod -R 777 bin || true
+
+      - name: 上传 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ICVE刷课APK
+          path: bin/*.apk
