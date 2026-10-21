@@ -12,7 +12,7 @@ source.exclude_dirs = tests, bin, .git, .github, .buildozer, __pycache__
 
 version = 1.3
 
-requirements = python3, kivy, kivymd, requests, pycryptodome
+requirements = python3, kivy, kivymd==1.2.0, requests, pycryptodome
 # 屏幕方向（portrait=竖屏）
 orientation = portrait
 
@@ -20,8 +20,8 @@ orientation = portrait
 android.permissions = INTERNET
 
 # 目标安卓 SDK 版本（用较新稳定值，buildozer 会自动下载）
-android.api = 33
-android.ndk = 25b
+android.api = 34
+android.ndk = 27b
 android.minapi = 21
 # 架构:默认只出 arm64-v8a,旧 32 位机型装不上;补上 armeabi-v7a
 android.archs = arm64-v8a, armeabi-v7a
