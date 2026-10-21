@@ -30,7 +30,10 @@ jobs:
               # 循环：每次失败后 patch，再重试
               for i in 1 2 3 4 5 6; do
                 echo "=== build attempt $i ==="
-                if buildozer -v android debug; then
+                # yes | : 新版 buildozer 检测到 root 会交互询问
+                # "Are you sure you want to continue [y/n]?",CI 无 stdin 时会
+                # EOFError 崩溃(假绿元凶),这里用 yes 喂 y
+                if yes | buildozer -v android debug; then
                   echo "=== build succeeded ==="
                   break
                 fi
@@ -45,13 +48,17 @@ jobs:
                 P4A_DIR=".buildozer/android/platform/python-for-android"
                 find "$P4A_DIR" -name "*.py" -exec sed -i "s/-m venv venv/-m venv venv --upgrade-deps/g" {} \; 2>/dev/null || true
               done
+
+              # 产物校验:没有 APK 就非零退出,让 Job 真正失败(杜绝假绿)
+              ls -l bin/*.apk
             '
 
       - name: 修复产物权限
-        run: sudo chmod -R 777 bin || true
+        run: sudo chmod -R 777 bin
 
       - name: 上传 APK
         uses: actions/upload-artifact@v4
         with:
           name: ICVE刷课APK
           path: bin/*.apk
+          if-no-files-found: error
