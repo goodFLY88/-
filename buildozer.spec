@@ -20,8 +20,8 @@ orientation = portrait
 android.permissions = INTERNET
 
 # 目标安卓 SDK 版本（用较新稳定值，buildozer 会自动下载）
-android.api = 34
-android.ndk = 27b
+android.api = 33
+android.ndk = 25b
 android.minapi = 21
 # 架构:默认只出 arm64-v8a,旧 32 位机型装不上;补上 armeabi-v7a
 android.archs = arm64-v8a, armeabi-v7a
