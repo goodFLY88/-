@@ -24,12 +24,25 @@ orientation = portrait
 # 安卓权限
 android.permissions = INTERNET
 
-# 目标安卓 SDK 版本（用较新稳定值，buildozer 会自动下载）
-android.api = 33
-android.ndk = 25b
+# 目标安卓 SDK 版本（37 = Android 17，与目标设备对齐）
+android.api = 37
+# NDK 必须 r27+，r28c 起完整支持 16KB 内存页对齐：
+# 安卓 15+ 新机（含全部安卓 17 机型）默认 16KB 页，旧 NDK 编出的 .so
+# 是 4KB 对齐，在这些设备上 dlopen 直接失败 → 启动闪退。
+# （曾用 NDK 25b + api33，安卓 17 上必崩；27b 是无效版本号，NDK 命名是
+#  r27c/r28c 这种格式）
+android.ndk = 28c
+# p4a 用 develop 分支：16KB 对齐修复与 api 37 支持先进 develop
+# （稳定分支 lag；社区验证配置：api36/ndk28c/arm64 + p4a develop 可解 16KB 问题）
+p4a.branch = develop
+# 显式锁 Python 3.13：镜像默认 3.14 会踩 ensurepip 旧 pip 不兼容的坑
+p4a.python_version = 3.13
+# 架构：安卓 17 机型均为 arm64，且 Google 已在新系统陆续移除 32 位支持。
+# 只出 arm64-v8a：单架构 CI 构建时间减半（双架构约 40 分钟易超时），
+# 包体也小一半。16KB 对齐的 .so 在 4KB 页旧机上仍可运行（向后兼容）。
+android.archs = arm64-v8a
+# 最低支持 Android 5.0（16KB 对齐 .so 在 4KB 页设备上正常跑）
 android.minapi = 21
-# 架构:默认只出 arm64-v8a,旧 32 位机型装不上;补上 armeabi-v7a
-android.archs = arm64-v8a, armeabi-v7a
 
 # 关闭调试（正式包）
 android.debug = 0

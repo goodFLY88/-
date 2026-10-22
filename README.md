@@ -133,6 +133,21 @@ python mobile.py          # 或 python login_mobile.py 只登录
 25. 新增 `smoke_test.py`：无头跑 build() + 顺序切换全部 7 个页面，
     回归验证启动与页面导航，本地全绿
 
+**安卓 17 适配（2026-10-22）**
+26. `android.api = 33 → 37`（Android 17）。targetSdk 33 的包在安卓 17 上
+    虽能装，但 Play Protect / 严格 ROM 会警告拦截，且拿不到新系统行为对齐
+27. `android.ndk = 25b → 28c`：**这是安卓 17 闪退的第二根因**——安卓 15+
+    新机（含全部安卓 17 机型）默认 16KB 内存页，NDK 25b 编出的 .so 是
+    4KB 对齐，在这些设备上 dlopen 直接失败启动闪退。NDK r28c 完整支持
+    16KB 对齐（NDK 命名是 r28c 这种格式，`27b` 是无效版本号）
+28. `p4a.branch = develop`：16KB 对齐修复与 api 37 支持先进 develop 分支
+    （社区验证配置：api36 + ndk28c + arm64 + p4a develop 可解 16KB 问题）
+29. `android.archs` 双架构 → 仅 `arm64-v8a`：安卓 17 机型均为 arm64，
+    单架构 CI 构建时间减半、包体减半；16KB 对齐 .so 在 4KB 页旧机
+    仍可运行（向后兼容）
+30. `p4a.python_version = 3.13`：镜像默认 3.14 会踩 ensurepip 旧 pip
+    不兼容的坑（CI patch 循环一直在兜这个），显式锁版本
+
 > 原版代码已完整保留在分支 `backup-before-optimize-20261022`，随时可还原：
 > `git checkout backup-before-optimize-20261022`
 
@@ -148,6 +163,9 @@ python mobile.py          # 或 python login_mobile.py 只登录
 - **打开闪退（最重要）**：90% 是 KivyMD 版本问题。请勿 `pip install kivymd`
   裸装（会拉 2.0.0，与本项目 1.x API 不兼容，启动即 ImportError）。
   必须用锁好版本的依赖：`pip install -r requirements.txt`
+- **安卓 15+/17 上启动闪退**：旧 NDK 编的 .so 是 4KB 内存页对齐，在 16KB 页
+  新机上 dlopen 直接失败。请用当前 CI 产物（NDK 28c + api 37 已适配），
+  不要拿旧 APK 测试；本地重打必须 `buildozer android clean` 后再构建
 - **安卓中文变方块**：确认 `NotoSansSC.ttf` 与 `main.py` 同目录（优化版已修打包配置）
 - **自动登录不可用**：`pip install -r requirements.txt` 后重试；
   缺依赖时会提示自动安装，也可选 `n` 走人工登录
