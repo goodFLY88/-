@@ -17,8 +17,11 @@ jobs:
         run: docker pull ghcr.io/kivy/buildozer:latest
 
       # 优化版:直接在仓库根目录打包(单一代码源),不再切到 APK工程/
+      # 注意:管道加 set -o pipefail,否则 tee 会吞掉 docker 的失败退出码(又一个假绿来源)
       - name: 用官方镜像打包 APK（首次跑通到 pyjnius 失败后 patch 再续）
+        shell: bash
         run: |
+          set -o pipefail
           docker run --rm --entrypoint bash \
             -v ${{ github.workspace }}:/project \
             -w /project \
@@ -51,7 +54,15 @@ jobs:
 
               # 产物校验:没有 APK 就非零退出,让 Job 真正失败(杜绝假绿)
               ls -l bin/*.apk
-            '
+            ' 2>&1 | tee build.log
+
+      - name: 上传构建日志（无论成败，失败时这是唯一定位手段）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: warn
 
       - name: 修复产物权限
         run: sudo chmod -R 777 bin
