@@ -122,8 +122,11 @@ python mobile.py          # 或 python login_mobile.py 只登录
 22. 闪退根因一：`requirements = kivy, kivymd` 不锁版本，pip/buildozer 会拉到
     KivyMD 2.0.0（2026-08 发布的大版本重构），它删除了 1.x 的
     `OneLineListItem` / `TwoLineListItem` 等 API，`main.py` 第 28 行
-    ImportError 直接闪退。已锁定 `kivy==2.3.1` + `kivymd==1.2.0`
-    （代码按 1.x API 编写；kivy 锁 2.3.1 是因为 2.2.x 没有 py3.13 wheel）
+    ImportError 直接闪退。已锁定 `kivy==2.3.1` + `kivymd==1.0.2`
+    （kivy 锁 2.3.1 是因为 2.2.x 没有 py3.13 wheel；kivymd 锁 1.0.2 是因为
+    1.1.1/1.2.0 官方只发源码包没有 wheel，安卓 p4a 的 `--only-binary` +
+    android 平台过滤装不上，实测报错后才定位到；1.0.2 是最后一个有 wheel
+    的 1.x 版本，API 兼容，本地冒烟测试通过）
 23. 闪退根因二：`main.py` 里 `LabelBase.register(..., fn_bold_italic=...)`
     参数名错误，Kivy 的正确名称是 `fn_bolditalic`（无下划线），任何版本
     都会 TypeError 闪退 —— 这是原版遗留 bug，已修

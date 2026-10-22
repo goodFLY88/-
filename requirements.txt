@@ -5,8 +5,10 @@ pycryptodome>=3.18.0
 # 版本必须锁定：KivyMD 2.0 是破坏性重构，删除了 1.x 的
 # OneLineListItem/TwoLineListItem 等 API，不锁版本 pip 会拉到 2.0.0，
 # 启动时 ImportError 直接闪退。kivy 锁 2.3.1（2.2.x 无 py3.13 wheel）。
+# kivymd 锁 1.0.2 而非 1.2.0：1.1.1/1.2.0 官方只有源码包没有 wheel，
+# 安卓 p4a 的 --only-binary 过滤装不上（详见 buildozer.spec 注释）。
 kivy==2.3.1
-kivymd==1.2.0
+kivymd==1.0.2
 
 # —— 全自动滑块登录（可选依赖，缺失时自动回退人工登录，见 slider_auto.py）——
 # 仅桌面端 CLI（cli.py）需要；安卓 APK 不打包这些依赖

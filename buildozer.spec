@@ -15,9 +15,14 @@ version = 1.3
 # 版本必须锁定:
 # 1) KivyMD 2.0 是破坏性重构,删除了 1.x 的 OneLineListItem/TwoLineListItem 等
 #    API,不锁版本 buildozer 会拉到 2.0.0,APK 启动即 ImportError 闪退;
-#    kivy 锁 2.3.1 是为了与 kivymd 1.2.0 匹配。
-# 2) requests/pycryptodome 锁大版本下限,避免未来破坏性变更。
-requirements = python3, kivy==2.3.1, kivymd==1.2.0, requests>=2.28.0, pycryptodome>=3.18.0
+#    kivy 锁 2.3.1 是为了与 kivymd 1.x 匹配。
+# 2) kivymd 只能锁 1.0.2:1.1.1/1.2.0 官方只发了源码包(tar.gz)没有 wheel,
+#    而 p4a 装纯 Python 包时用 --only-binary=:all: + android 平台过滤,
+#    源码包直接被跳过(实测报错:Could not find a version that satisfies
+#    kivymd==1.2.0, from versions: ..., 1.0.1, 1.0.2, 2.0.0)。
+#    1.0.2 是最后一个有 wheel 的 1.x 版本,API 与本项目兼容(冒烟测试通过)。
+# 3) requests/pycryptodome 锁大版本下限,避免未来破坏性变更。
+requirements = python3, kivy==2.3.1, kivymd==1.0.2, requests>=2.28.0, pycryptodome>=3.18.0
 # 屏幕方向（portrait=竖屏）
 orientation = portrait
 
