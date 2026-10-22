@@ -397,47 +397,32 @@ class DashboardScreen(MDScreen):
         box = BoxLayout(orientation="vertical", padding=16, spacing=12, size_hint_y=None)
         box.bind(minimum_height=box.setter("height"))
 
-        # 欢迎卡片（自适应高度，直接放 label）
-        self.welcome_card = make_card(spacing=6)
+        # 欢迎卡片（自适应高度，label 给足中文安全高度）
+        self.welcome_card = make_card(spacing=4)
         self.welcome = MDLabel(text="", theme_text_color="Custom", text_color=TEXT_MAIN,
-                               font_style="H6", size_hint_y=None, height=30)
+                               font_style="H6", size_hint_y=None, height=36)
         self.welcome_card.add_widget(self.welcome)
         self.welcome_sub = MDLabel(text="", theme_text_color="Custom", text_color=TEXT_SUB,
-                                   size_hint_y=None, height=22)
+                                   size_hint_y=None, height=28)
         self.welcome_card.add_widget(self.welcome_sub)
         box.add_widget(self.welcome_card)
 
         box.add_widget(section_label("快捷功能"))
 
-        # 功能入口卡片（可点击 MDCard，固定高度）
-        from kivymd.uix.label import MDIcon
-        for icon, label, desc, target in [
-            ("book-open-variant", "我的课程", "浏览已选课程", "courses"),
-            ("play-circle", "一键刷课", "自动刷完课程视频", "speed"),
-            ("file-check", "自动答题", "拉取作业并自动作答", "answer"),
-            ("calendar-check", "签到改签", "补签或修改签到状态", "sign"),
-            ("account-multiple", "账号管理", "管理已保存的账号", "accounts"),
+        # 功能入口（KivyMD 原生 TwoLineListItem，内部布局已调好，
+        # 避免手搓卡片在中文字体下高度溢出导致文字重叠）
+        for label, desc, target in [
+            ("我的课程", "浏览已选课程", "courses"),
+            ("一键刷课", "自动刷完课程视频", "speed"),
+            ("自动答题", "拉取作业并自动作答", "answer"),
+            ("签到改签", "补签或修改签到状态", "sign"),
+            ("账号管理", "管理已保存的账号", "accounts"),
         ]:
-            card = MDCard(size_hint=(1, None), height=72,
-                          md_bg_color=CARD_BG, radius=[12, 12, 12, 12],
-                          elevation=0)
-            cbox = BoxLayout(orientation="horizontal", spacing=12,
-                             size_hint_y=1, padding=(16, 0, 16, 0))
-            ic = MDIcon(icon=icon, theme_text_color="Custom", text_color=PRIMARY,
-                        size_hint=(None, None), size=(36, 36), pos_hint={"center_y": 0.5})
-            cbox.add_widget(ic)
-            txt = BoxLayout(orientation="vertical", size_hint_x=1, spacing=0)
-            txt.add_widget(MDLabel(text=label, theme_text_color="Custom", text_color=TEXT_MAIN,
-                                   font_style="Subtitle1", size_hint_y=None, height=30))
-            txt.add_widget(MDLabel(text=desc, theme_text_color="Custom", text_color=TEXT_SUB,
-                                   size_hint_y=None, height=24))
-            cbox.add_widget(txt)
-            arrow = MDIcon(icon="chevron-right", theme_text_color="Custom", text_color=TEXT_SUB,
-                           size_hint=(None, None), size=(24, 24), pos_hint={"center_y": 0.5})
-            cbox.add_widget(arrow)
-            card.add_widget(cbox)
-            card.bind(on_release=lambda x, t=target: self.app.goto(t))
-            box.add_widget(card)
+            item = TwoLineListItem(text=label, secondary_text=desc,
+                                   theme_text_color="Primary",
+                                   secondary_theme_text_color="Secondary")
+            item.bind(on_release=lambda x, t=target: self.app.goto(t))
+            box.add_widget(item)
 
         scroll.add_widget(box)
         root.add_widget(scroll)
