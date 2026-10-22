@@ -245,7 +245,13 @@ class LoginScreen(MDScreen):
         link_box.add_widget(MDLabel(text="① 复制下方链接，到浏览器打开登录", theme_text_color="Custom",
                                     text_color=TEXT_MAIN, size_hint_y=None, height=28))
         self.link_label = MDLabel(text=LOGIN_URL, theme_text_color="Custom",
-                                  text_color=PRIMARY_DARK, size_hint_y=None, height=60)
+                                  text_color=PRIMARY_DARK, size_hint_y=None, height=40,
+                                  text_size=(None, None))
+        # 自适应高度：URL 长文本自动换行，避免文字溢出与上下重叠（真机实测问题）
+        self.link_label.bind(
+            texture_size=lambda w, s: setattr(w, "height", max(s[1], 40)))
+        self.link_label.bind(
+            width=lambda w, x: setattr(w, "text_size", (x, None)))
         link_box.add_widget(self.link_label)
         copy_btn = MDRaisedButton(text="复制登录链接", size_hint=(1, None), height=46,
                                   md_bg_color=PRIMARY)
@@ -261,7 +267,7 @@ class LoginScreen(MDScreen):
         paste_box.add_widget(MDLabel(text="② 浏览器登录后，复制地址栏网址粘贴到下面", theme_text_color="Custom",
                                      text_color=TEXT_MAIN, size_hint_y=None, height=28))
         self.input = MDTextField(hint_text="粘贴 token 网址", size_hint_y=None, height=54,
-                                 mode="rectangle", line_color_normal=PRIMARY,
+                                 mode="line", line_color_normal=PRIMARY,
                                  line_color_focus=PRIMARY)
         paste_box.add_widget(self.input)
         row = BoxLayout(orientation="horizontal", spacing=10, size_hint_y=None, height=46)
@@ -815,7 +821,12 @@ class ICVEApp(MDApp):
     def build(self):
         self.theme_cls.theme_style = "Light"
         self.theme_cls.primary_palette = "Blue"
+        # 中文字体替换：只改文本样式，跳过 "Icon" —— 它是 MDIcon 的图标
+        # 字体（materialdesignicons），改成 NotoSansSC 会导致图标渲染成
+        # 方框占位符（真机实测：登录页 school 图标、侧边栏图标全变成叉）
         for k in list(self.theme_cls.font_styles.keys()):
+            if k == "Icon":
+                continue
             self.theme_cls.font_styles[k][0] = "NotoSansSC.ttf"
         sm = MDScreenManager()
         self.login = LoginScreen(self)
