@@ -24,8 +24,13 @@ orientation = portrait
 # 安卓权限
 android.permissions = INTERNET
 
-# 目标安卓 SDK 版本（37 = Android 17，与目标设备对齐）
-android.api = 37
+# 目标安卓 SDK 版本。原设 37（Android 17），但 Android 17 目前仍是 preview
+# （Cinnamon Bun），sdkmanager 仓库里没有 platforms;android-37 平台包，
+# 构建必失败（实测 6 次 attempt 全挂在 Failed to find package platforms;android-37）。
+# 退 36（Android 16 稳定版，Play 2026-08 起的目标版本要求线）：
+# targetSdk 36 在安卓 17 真机上完全兼容运行（向下兼容是标准场景），
+# 且拿到 16KB 内存页支持才是安卓 17 不崩的关键（见下方 NDK 28c）。
+android.api = 36
 # NDK 必须 r27+，r28c 起完整支持 16KB 内存页对齐：
 # 安卓 15+ 新机（含全部安卓 17 机型）默认 16KB 页，旧 NDK 编出的 .so
 # 是 4KB 对齐，在这些设备上 dlopen 直接失败 → 启动闪退。
