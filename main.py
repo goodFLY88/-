@@ -50,6 +50,39 @@ LabelBase.register(name="Roboto",
                    fn_italic="NotoSansSC.ttf",
                    fn_bolditalic="NotoSansSC.ttf")
 
+
+def _patch_pil_rectangle():
+    """兼容 kivymd 1.0.2 阴影绘制的负坐标 bug（治本）。
+
+    kivymd 1.0.2 的 elevation.py __draw_shadow__ 在按钮 radius 超过
+    半宽时算出 x1 < x0 的矩形，2024+ 的 Pillow 对 ImageDraw.rectangle
+    严格校验，直接 ValueError（真机实测：MDRaisedButton 半径变化 →
+    阴影重绘 → 崩溃）。kivymd 1.2.0 重构阴影系统才修掉，但我们锁
+    1.0.2（1.1.1/1.2.0 无 wheel 装不上），只能在这里把负坐标 clamp
+    回合法值——阴影照样画，只是极少数越界场景少画一个像素。
+    """
+    try:
+        from PIL import ImageDraw
+    except ImportError:
+        return
+    _orig = ImageDraw.ImageDraw.rectangle
+
+    def _safe_rectangle(self, xy, *args, **kwargs):
+        try:
+            return _orig(self, xy, *args, **kwargs)
+        except ValueError:
+            if not (isinstance(xy, (list, tuple)) and len(xy) == 4):
+                raise
+            x0, y0, x1, y1 = xy
+            x1 = max(x1, x0)
+            y1 = max(y1, y0)
+            return _orig(self, [x0, y0, x1, y1], *args, **kwargs)
+
+    ImageDraw.ImageDraw.rectangle = _safe_rectangle
+
+
+_patch_pil_rectangle()
+
 def topbar(title):
     bar = MDTopAppBar(title=title)
     bar.md_bg_color = [1, 1, 1, 1]
@@ -729,7 +762,11 @@ def _install_crash_logger():
                     traceback.format_exception(type(inst), inst, inst.__traceback__))
                 _write(text + "\n")
                 sys.stderr.write(text)
-                return ExceptionManager.RAISE_EXCEPTION
+                # 注意：kivy 2.x 的 ExceptionManagerBase 只有 RAISE(0)/PASS(1)，
+                # 没有 1.x 的 RAISE_EXCEPTION（访问它自己就会 AttributeError，
+                # 把可恢复异常放大成闪退——真机实测踩过）。
+                # 返回 PASS：日志已记录，吞掉异常让 App 继续运行不闪退。
+                return ExceptionManager.PASS
 
         ExceptionManager.add_handler(CrashLogger())
     except Exception:
