@@ -628,6 +628,9 @@ class CourseSelectScreen(MDScreen):
             "studentId": client.stu_id or "",
             "studentName": client.user_info.get("nickName",""),
             "studentNo": client.user_info.get("userName",""),
+            # 关键:带原记录主键 id,让 do_sign_action 走 PUT 更新
+            # (改签"已签→未签"必须覆盖原记录,POST 新建覆盖不了)
+            "id": sign.get("recordId", ""),
         }
         self.append(f">> 改签为{SIGN_STATUS_MAP.get(status_type,status_type)}...")
         def work():

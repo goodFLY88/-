@@ -119,9 +119,6 @@ def get_signs(client: ZjyClient, class_id: str, course_info_id: str, course_id: 
         return []
 
     # 步骤三:并发获取当前学生在每个签到活动中的签到状态
-    my_name = client.user_info.get("nickName", "") if client.user_info else ""
-    my_stu_id = client.stu_id
-
     def fetch_student_status(sign_act):
         sid = sign_act["signId"]
 
@@ -134,34 +131,27 @@ def get_signs(client: ZjyClient, class_id: str, course_info_id: str, course_id: 
             if d.get("gesture") and not sign_act["gesture"]:
                 sign_act["gesture"] = convert_gesture(d.get("gesture"))
 
-        # 获取出勤记录,提取当前账号状态
+        # 复用 client 的签到记录查询/匹配(与 CLI 改签同一条链路),
+        # 保证能拿到记录主键 id —— 否则"已签→未签"改签覆盖不了原记录
         my_record = None
-        for api in ["spoc/courseFaceTeachSignStudent/page/listAll",
-                    "spoc/courseFaceTeachSignStudent/list",
-                    "spoc/courseFaceTeachSignStudent/page/notSign"]:
-            data3 = client.api_get(api, {
-                "signId": sid, "classId": class_id,
-                "pageNum": "1", "pageSize": "2000",
-            })
-            if data3:
-                rows = client.extract_rows(data3)
-                for r in rows:
-                    rname = r.get("studentName", "")
-                    rsid = r.get("studentId", "")
-                    if (my_name and my_name == rname) or (my_stu_id and str(my_stu_id) == str(rsid)):
-                        my_record = r
-                        break
-            if my_record:
-                break
+        try:
+            records = client._fetch_sign_records(sid, class_id)
+            my_record = client._match_my_record(records) if records else None
+        except Exception as e:
+            log(f"查询签到记录异常: {e}", "ERROR")
 
         if my_record:
             sign_act["myStatus"] = str(my_record.get("signResultType", "0"))
             sign_act["mySignTime"] = (my_record.get("signTime") or
                                        my_record.get("createTime") or
                                        my_record.get("attendTime") or "")
+            # 关键:记录主键 id —— 改签(尤其"已签→未签")必须带 id 走 PUT,
+            # 否则 do_sign_action 只能 POST 新建,覆盖不了已存在的已签记录
+            sign_act["recordId"] = my_record.get("id", "") or my_record.get("signStudentId", "")
         else:
             sign_act["myStatus"] = "0"
             sign_act["mySignTime"] = ""
+            sign_act["recordId"] = ""
 
         return sign_act
 
