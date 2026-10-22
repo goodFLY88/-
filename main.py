@@ -16,6 +16,7 @@
 """
 
 import re
+import sys
 import threading
 import time
 
@@ -682,5 +683,59 @@ class ICVEApp(MDApp):
         self.sm.current = "login"
 
 
+def _install_crash_logger():
+    """闪退自救：把未捕获异常写到手机存储，无 adb 也能定位。
+
+    三个落点：
+    1. /sdcard/icve_crash.log   —— 用户可直接文件管理器看到并发回
+    2. 应用私有目录 icve_crash.log
+    3. stderr（有 adb 时 logcat 也能看到）
+    """
+    import traceback
+    paths = []
+    try:
+        paths.append("/sdcard/icve_crash.log")
+    except Exception:
+        pass
+    try:
+        from android.storage import app_storage_path  # noqa: F401
+        paths.append(app_storage_path() + "/icve_crash.log")
+    except Exception:
+        pass
+    paths.append("icve_crash.log")
+
+    def _write(text):
+        for p in paths:
+            try:
+                with open(p, "a", encoding="utf-8") as f:
+                    f.write(text)
+            except Exception:
+                pass
+
+    def _hook(exc_type, exc_value, exc_tb):
+        text = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+        _write(text + "\n")
+        sys.stderr.write(text)
+
+    sys.excepthook = _hook
+
+    # Kivy 事件循环内的异常（含 Clock 回调、线程调度）走 ExceptionManager
+    try:
+        from kivy.base import ExceptionManager, ExceptionHandler
+
+        class CrashLogger(ExceptionHandler):
+            def handle_exception(self, inst):
+                text = "".join(
+                    traceback.format_exception(type(inst), inst, inst.__traceback__))
+                _write(text + "\n")
+                sys.stderr.write(text)
+                return ExceptionManager.RAISE_EXCEPTION
+
+        ExceptionManager.add_handler(CrashLogger())
+    except Exception:
+        pass
+
+
 if __name__ == "__main__":
+    _install_crash_logger()
     ICVEApp().run()
