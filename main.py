@@ -159,17 +159,22 @@ class SidebarMenu(BoxLayout):
         self.padding = 0
         self.spacing = 0
         self.app = app
-        # 顶部标题栏
-        header = MDCard(size_hint_y=None, height=130,
-                        md_bg_color=PRIMARY, radius=[0,0,0,0],
-                        elevation=0, padding=(24, 24, 24, 16))
-        header_box = BoxLayout(orientation="vertical", spacing=6)
-        header_box.add_widget(MDLabel(text="ICVE 学习助手", theme_text_color="Custom",
-                                      font_style="H6",
-                                      text_color=[1, 1, 1, 1], size_hint_y=None, height=34))
-        header_box.add_widget(MDLabel(text="智慧职教自动化工具", theme_text_color="Custom",
-                                      text_color=[0.88, 0.92, 0.98, 1], size_hint_y=None, height=22))
-        header.add_widget(header_box)
+        from kivymd.uix.label import MDIcon
+        # 顶部账号区（头像 + 昵称 + 学号）
+        header = MDBoxLayout(size_hint_y=None, height=140,
+                             md_bg_color=PRIMARY, padding=(20, 20, 20, 16))
+        self.avatar = MDIcon(icon="account-circle", theme_text_color="Custom",
+                             text_color=[1, 1, 1, 1], size_hint=(None, None),
+                             size=(56, 56), pos_hint={"center_x": 0.5})
+        header.add_widget(self.avatar)
+        self.name_label = MDLabel(text="未登录", theme_text_color="Custom",
+                                  text_color=[1, 1, 1, 1], font_style="Subtitle1",
+                                  halign="center", size_hint_y=None, height=30)
+        header.add_widget(self.name_label)
+        self.stu_label = MDLabel(text="登录后显示学号", theme_text_color="Custom",
+                                 text_color=[0.85, 0.9, 0.98, 1], halign="center",
+                                 size_hint_y=None, height=22)
+        header.add_widget(self.stu_label)
         self.add_widget(header)
         # 菜单内容
         content = BoxLayout(orientation="vertical", padding=(5, 10, 5, 10), spacing=1)
@@ -188,9 +193,6 @@ class SidebarMenu(BoxLayout):
             ("logout", "退出登录", "logout"),
         ]:
             content.add_widget(self._nav_item(icon, label, target))
-        self.status_label = MDLabel(text="● 未登录", theme_text_color="Error",
-                                    size_hint_y=None, height=44, padding=(18, 8))
-        content.add_widget(self.status_label)
         self.add_widget(content)
 
     def _nav_item(self, icon, label, target):
@@ -211,11 +213,14 @@ class SidebarMenu(BoxLayout):
 
     def refresh(self):
         if self.app.client and self.app.client.user_info:
-            self.status_label.text = f"● 已登录 {self.app.client.user_info.get('nickName','')}"
-            self.status_label.theme_text_color = "Primary"
+            u = self.app.client.user_info
+            self.name_label.text = u.get("nickName", "同学")
+            self.stu_label.text = f"学号 {u.get('userName', '')}"
+            self.avatar.icon = "account-circle"
         else:
-            self.status_label.text = "● 未登录"
-            self.status_label.theme_text_color = "Error"
+            self.name_label.text = "未登录"
+            self.stu_label.text = "登录后显示学号"
+            self.avatar.icon = "account-circle-outline"
 
 
 class LoginScreen(MDScreen):
