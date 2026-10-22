@@ -120,17 +120,32 @@ def section_label(text):
 
 
 def make_card(**kw):
-    """统一卡片容器。自适应高度：不固定 height，由内容撑开。
+    """统一卡片容器。自适应高度用 MDBoxLayout，可点击用 MDCard。
 
-    用法：make_card(height=64) 给固定高度；make_card() 给自适应高度。
+    MDCard 的 height 不会随内容自动撑开（真机实测导致内容互相重叠挤压），
+    所以：
+    - 自适应高度卡片 → MDBoxLayout（bind minimum_height）
+    - 可点击卡片（需 on_release）→ MDCard（固定 height）
+    通过 clickable 参数区分。
     """
+    clickable = kw.pop("clickable", False)
     height = kw.pop("height", None)
-    card = MDCard(size_hint=(1, None), md_bg_color=CARD_BG,
-                  radius=[12, 12, 12, 12], elevation=0,
-                  padding=kw.pop("padding", (16, 14, 16, 14)),
-                  **kw)
+    padding = kw.pop("padding", (16, 14, 16, 14))
+    if clickable:
+        # 可点击：MDCard 固定高度（必须有明确 height）
+        if height is None:
+            height = 64
+        card = MDCard(size_hint=(1, None), height=height,
+                      md_bg_color=CARD_BG, radius=[12, 12, 12, 12],
+                      elevation=0, padding=padding, **kw)
+        return card
+    # 自适应高度：MDBoxLayout
+    card = MDBoxLayout(orientation="vertical", size_hint_y=None,
+                       md_bg_color=CARD_BG, padding=padding, **kw)
     if height is not None:
         card.height = height
+    else:
+        card.bind(minimum_height=card.setter("height"))
     return card
 
 
@@ -239,11 +254,9 @@ class LoginScreen(MDScreen):
                                size_hint_y=None, height=30))
 
         # 登录链接卡片
-        link_card = make_card()
-        link_box = BoxLayout(orientation="vertical", spacing=8, size_hint_y=None)
-        link_box.bind(minimum_height=link_box.setter("height"))
-        link_box.add_widget(MDLabel(text="① 复制下方链接，到浏览器打开登录", theme_text_color="Custom",
-                                    text_color=TEXT_MAIN, size_hint_y=None, height=28))
+        link_card = make_card(spacing=8)
+        link_card.add_widget(MDLabel(text="① 复制下方链接，到浏览器打开登录", theme_text_color="Custom",
+                                     text_color=TEXT_MAIN, size_hint_y=None, height=28))
         self.link_label = MDLabel(text=LOGIN_URL, theme_text_color="Custom",
                                   text_color=PRIMARY_DARK, size_hint_y=None, height=40,
                                   text_size=(None, None))
@@ -252,25 +265,22 @@ class LoginScreen(MDScreen):
             texture_size=lambda w, s: setattr(w, "height", max(s[1], 40)))
         self.link_label.bind(
             width=lambda w, x: setattr(w, "text_size", (x, None)))
-        link_box.add_widget(self.link_label)
+        link_card.add_widget(self.link_label)
         copy_btn = MDRaisedButton(text="复制登录链接", size_hint=(1, None), height=46,
                                   md_bg_color=PRIMARY)
         copy_btn.bind(on_release=lambda *_: self.copy_link())
-        link_box.add_widget(copy_btn)
-        link_card.add_widget(link_box)
+        link_card.add_widget(copy_btn)
         box.add_widget(link_card)
 
         # 粘贴 token 卡片
-        paste_card = make_card()
-        paste_box = BoxLayout(orientation="vertical", spacing=8, size_hint_y=None)
-        paste_box.bind(minimum_height=paste_box.setter("height"))
-        paste_box.add_widget(MDLabel(text="② 浏览器登录后，复制地址栏网址粘贴到下面", theme_text_color="Custom",
-                                     text_color=TEXT_MAIN, size_hint_y=None, height=28))
+        paste_card = make_card(spacing=8)
+        paste_card.add_widget(MDLabel(text="② 浏览器登录后，复制地址栏网址粘贴到下面", theme_text_color="Custom",
+                                      text_color=TEXT_MAIN, size_hint_y=None, height=28))
         self.input = MDTextField(hint_text="粘贴 token 网址", size_hint_y=None, height=54,
                                  mode="line", line_color_normal=PRIMARY,
                                  line_color_focus=PRIMARY)
-        paste_box.add_widget(self.input)
-        row = BoxLayout(orientation="horizontal", spacing=10, size_hint_y=None, height=46)
+        paste_card.add_widget(self.input)
+        row = MDBoxLayout(orientation="horizontal", spacing=10, size_hint_y=None, height=46)
         paste_btn = MDRaisedButton(text="粘贴", size_hint=(1, None), height=46,
                                    md_bg_color=PRIMARY_DARK)
         paste_btn.bind(on_release=lambda *_: self.do_paste())
@@ -279,8 +289,7 @@ class LoginScreen(MDScreen):
                                    md_bg_color=PRIMARY)
         login_btn.bind(on_release=lambda *_: self.do_login())
         row.add_widget(login_btn)
-        paste_box.add_widget(row)
-        paste_card.add_widget(paste_box)
+        paste_card.add_widget(row)
         box.add_widget(paste_card)
 
         self.status = MDLabel(text="尚未登录", theme_text_color="Custom",
@@ -388,22 +397,19 @@ class DashboardScreen(MDScreen):
         box = BoxLayout(orientation="vertical", padding=16, spacing=12, size_hint_y=None)
         box.bind(minimum_height=box.setter("height"))
 
-        # 欢迎卡片
-        self.welcome_card = make_card()
-        wbox = BoxLayout(orientation="vertical", spacing=6, size_hint_y=None)
-        wbox.bind(minimum_height=wbox.setter("height"))
+        # 欢迎卡片（自适应高度，直接放 label）
+        self.welcome_card = make_card(spacing=6)
         self.welcome = MDLabel(text="", theme_text_color="Custom", text_color=TEXT_MAIN,
                                font_style="H6", size_hint_y=None, height=30)
-        wbox.add_widget(self.welcome)
+        self.welcome_card.add_widget(self.welcome)
         self.welcome_sub = MDLabel(text="", theme_text_color="Custom", text_color=TEXT_SUB,
                                    size_hint_y=None, height=22)
-        wbox.add_widget(self.welcome_sub)
-        self.welcome_card.add_widget(wbox)
+        self.welcome_card.add_widget(self.welcome_sub)
         box.add_widget(self.welcome_card)
 
         box.add_widget(section_label("快捷功能"))
 
-        # 功能入口卡片（图标 + 标题 + 描述）
+        # 功能入口卡片（可点击 MDCard，固定高度）
         from kivymd.uix.label import MDIcon
         for icon, label, desc, target in [
             ("book-open-variant", "我的课程", "浏览已选课程", "courses"),
@@ -412,7 +418,7 @@ class DashboardScreen(MDScreen):
             ("calendar-check", "签到改签", "补签或修改签到状态", "sign"),
             ("account-multiple", "账号管理", "管理已保存的账号", "accounts"),
         ]:
-            card = make_card(height=64)
+            card = make_card(clickable=True, height=64)
             cbox = BoxLayout(orientation="horizontal", spacing=14)
             ic = MDIcon(icon=icon, theme_text_color="Custom", text_color=PRIMARY,
                         size_hint=(None, None), size=(40, 40), pos_hint={"center_y": 0.5})
