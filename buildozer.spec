@@ -12,8 +12,12 @@ source.exclude_dirs = tests, bin, .git, .github, .buildozer, __pycache__
 
 version = 1.3
 
-requirements = python3, kivy, kivymd==1.2.0, requests, pycryptodome
-# 屏幕方向（portrait=竖屏）
+# 版本必须锁定:
+# 1) KivyMD 2.0 是破坏性重构,删除了 1.x 的 OneLineListItem/TwoLineListItem 等
+#    API,不锁版本 buildozer 会拉到 2.0.0,APK 启动即 ImportError 闪退;
+#    kivy 锁 2.3.1 是为了与 kivymd 1.2.0 匹配。
+# 2) requests/pycryptodome 锁大版本下限,避免未来破坏性变更。
+requirements = python3, kivy==2.3.1, kivymd==1.2.0, requests>=2.28.0, pycryptodome>=3.18.0# 屏幕方向（portrait=竖屏）
 orientation = portrait
 
 # 安卓权限

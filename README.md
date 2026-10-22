@@ -118,6 +118,21 @@ python mobile.py          # 或 python login_mobile.py 只登录
     已改为 `yes | buildozer` 自动应答 + 结尾强制校验 `bin/*.apk` 存在 +
     `if-no-files-found: error`，没有产物就让 Job 失败。
 
+**启动闪退（2026-10-22 实测复现并修复）**
+22. 闪退根因一：`requirements = kivy, kivymd` 不锁版本，pip/buildozer 会拉到
+    KivyMD 2.0.0（2026-08 发布的大版本重构），它删除了 1.x 的
+    `OneLineListItem` / `TwoLineListItem` 等 API，`main.py` 第 28 行
+    ImportError 直接闪退。已锁定 `kivy==2.3.1` + `kivymd==1.2.0`
+    （代码按 1.x API 编写；kivy 锁 2.3.1 是因为 2.2.x 没有 py3.13 wheel）
+23. 闪退根因二：`main.py` 里 `LabelBase.register(..., fn_bold_italic=...)`
+    参数名错误，Kivy 的正确名称是 `fn_bolditalic`（无下划线），任何版本
+    都会 TypeError 闪退 —— 这是原版遗留 bug，已修
+24. `requirements.txt` 原先没有 kivy/kivymd（注释说"由 buildozer 打包"），
+    桌面用户 `pip install -r requirements.txt` 后跑 `python main.py` 必
+    ModuleNotFoundError 闪退 —— 已补上并锁版本
+25. 新增 `smoke_test.py`：无头跑 build() + 顺序切换全部 7 个页面，
+    回归验证启动与页面导航，本地全绿
+
 > 原版代码已完整保留在分支 `backup-before-optimize-20261022`，随时可还原：
 > `git checkout backup-before-optimize-20261022`
 
@@ -130,6 +145,9 @@ python mobile.py          # 或 python login_mobile.py 只登录
 
 ## 六、常见问题
 
+- **打开闪退（最重要）**：90% 是 KivyMD 版本问题。请勿 `pip install kivymd`
+  裸装（会拉 2.0.0，与本项目 1.x API 不兼容，启动即 ImportError）。
+  必须用锁好版本的依赖：`pip install -r requirements.txt`
 - **安卓中文变方块**：确认 `NotoSansSC.ttf` 与 `main.py` 同目录（优化版已修打包配置）
 - **自动登录不可用**：`pip install -r requirements.txt` 后重试；
   缺依赖时会提示自动安装，也可选 `n` 走人工登录

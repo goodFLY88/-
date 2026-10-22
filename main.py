@@ -47,7 +47,7 @@ LabelBase.register(name="Roboto",
                    fn_regular="NotoSansSC.ttf",
                    fn_bold="NotoSansSC.ttf",
                    fn_italic="NotoSansSC.ttf",
-                   fn_bold_italic="NotoSansSC.ttf")
+                   fn_bolditalic="NotoSansSC.ttf")
 
 def topbar(title):
     bar = MDTopAppBar(title=title)
