@@ -21,8 +21,16 @@ version = 1.3
 #    源码包直接被跳过(实测报错:Could not find a version that satisfies
 #    kivymd==1.2.0, from versions: ..., 1.0.1, 1.0.2, 2.0.0)。
 #    1.0.2 是最后一个有 wheel 的 1.x 版本,API 与本项目兼容(冒烟测试通过)。
-# 3) requests/pycryptodome 锁大版本下限,避免未来破坏性变更。
-requirements = python3, kivy==2.3.1, kivymd==1.0.2, requests>=2.28.0, pycryptodome>=3.18.0
+# 3) 不装 pycryptodome：官方只有桌面平台 wheel，p4a 的 --only-binary +
+#    android 平台过滤下解析不到（实测构建失败）。改用零依赖纯 Python
+#    AES 兼容层 aes_compat.py（zjy_client.py 内 try/except 自动回退）。
+# 4) urllib3/certifi/idna/chardet 显式列出：requests 的依赖。
+#    p4a 的依赖自动解析(dry-run)会因 kivymd 依赖 kivy(只有 NDK 编译产物,
+#    PyPI 无 android wheel)而失败,失败后回退原始列表且正式安装用 --no-deps,
+#    requests 的传递依赖不会进列表 → 运行时 ImportError,必须显式写全。
+#    这些都是 py3-none-any wheel,only-binary 下可装。
+# 5) requests 锁大版本下限,避免未来破坏性变更。
+requirements = python3, kivy==2.3.1, kivymd==1.0.2, requests>=2.28.0, urllib3, certifi, idna, chardet
 # 屏幕方向（portrait=竖屏）
 orientation = portrait
 

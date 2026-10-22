@@ -17,9 +17,18 @@ from typing import Optional, Union
 from urllib.parse import quote
 
 import requests
-from Crypto.Cipher import AES
-from Crypto.Util.Padding import pad
 from requests.adapters import HTTPAdapter
+
+try:
+    from Crypto.Cipher import AES
+    from Crypto.Util.Padding import pad
+except ImportError:
+    # 安卓打包（python-for-android）装不了 pycryptodome：官方只发布桌面平台
+    # wheel，p4a 的 --only-binary + android 平台过滤下解析不到任何版本，
+    # 会导致 APK 构建失败。此处回退到零依赖纯 Python 兼容层
+    # （AES-128-ECB + PKCS7，输出与 pycryptodome 逐字节一致，
+    #   交叉验证见 test_aes_compat.py）
+    from aes_compat import AES, pad
 
 from utils import log
 

@@ -1,5 +1,9 @@
 requests>=2.28.0
-pycryptodome>=3.18.0
+
+# 注意：pycryptodome 已不再需要。原项目用它做 AES 加密，但其官方 wheel 只有
+# 桌面平台，安卓 p4a 的 --only-binary 过滤装不上；现已改为零依赖纯 Python
+# 兼容层 aes_compat.py（AES-128-ECB + PKCS7，与 pycryptodome 逐字节一致，
+# 交叉验证见 test_aes_compat.py）。桌面端如已装 pycryptodome 会自动优先使用。
 
 # —— 桌面 GUI（Windows/macOS/Linux 直接运行 python main.py）——
 # 版本必须锁定：KivyMD 2.0 是破坏性重构，删除了 1.x 的

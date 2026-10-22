@@ -151,6 +151,21 @@ python mobile.py          # 或 python login_mobile.py 只登录
 30. `p4a.python_version = 3.13`：镜像默认 3.14 会踩 ensurepip 旧 pip
     不兼容的坑（CI patch 循环一直在兜这个），显式锁版本
 
+**依赖可安装性（CI 实测逐个踩坑后修复）**
+31. `kivymd 1.2.0 → 1.0.2`：1.1.1/1.2.0 官方只发源码包（tar.gz）没有
+    wheel，而 p4a 装纯 Python 包用 `--only-binary=:all:` + android 平台
+    过滤，源码包直接被跳过（CI 实测报错）。1.0.2 是最后一个有
+    `py3-none-any` wheel 的 1.x 版本，API 兼容（冒烟测试通过）
+32. `pycryptodome` 从 requirements 移除：同样只有桌面平台 wheel，安卓
+    装不上。项目只用它的 AES-128-ECB + PKCS7（两处），已改零依赖纯
+    Python 兼容层 `aes_compat.py`（`zjy_client.py` 内 try/except 回退），
+    与 pycryptodome 逐字节一致（`test_aes_compat.py` 200 组随机数据
+    + FIPS-197 官方向量交叉验证全过）
+33. `urllib3/certifi/idna/chardet` 显式列出：p4a 的依赖自动解析会因
+    kivymd 依赖 kivy（PyPI 无 android wheel）失败，失败后回退原始
+    列表且正式安装用 `--no-deps`，requests 的传递依赖不进列表，
+    不显式写全运行时会 ImportError
+
 > 原版代码已完整保留在分支 `backup-before-optimize-20261022`，随时可还原：
 > `git checkout backup-before-optimize-20261022`
 
