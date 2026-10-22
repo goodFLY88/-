@@ -418,19 +418,22 @@ class DashboardScreen(MDScreen):
             ("calendar-check", "签到改签", "补签或修改签到状态", "sign"),
             ("account-multiple", "账号管理", "管理已保存的账号", "accounts"),
         ]:
-            card = make_card(clickable=True, height=64)
-            cbox = BoxLayout(orientation="horizontal", spacing=14)
+            card = MDCard(size_hint=(1, None), height=72,
+                          md_bg_color=CARD_BG, radius=[12, 12, 12, 12],
+                          elevation=0)
+            cbox = BoxLayout(orientation="horizontal", spacing=12,
+                             size_hint_y=1, padding=(16, 0, 16, 0))
             ic = MDIcon(icon=icon, theme_text_color="Custom", text_color=PRIMARY,
-                        size_hint=(None, None), size=(40, 40), pos_hint={"center_y": 0.5})
+                        size_hint=(None, None), size=(36, 36), pos_hint={"center_y": 0.5})
             cbox.add_widget(ic)
-            txt = BoxLayout(orientation="vertical", size_hint_x=1)
+            txt = BoxLayout(orientation="vertical", size_hint_x=1, spacing=0)
             txt.add_widget(MDLabel(text=label, theme_text_color="Custom", text_color=TEXT_MAIN,
-                                   font_style="Subtitle1", size_hint_y=None, height=26))
+                                   font_style="Subtitle1", size_hint_y=None, height=30))
             txt.add_widget(MDLabel(text=desc, theme_text_color="Custom", text_color=TEXT_SUB,
-                                   size_hint_y=None, height=20))
+                                   size_hint_y=None, height=24))
             cbox.add_widget(txt)
             arrow = MDIcon(icon="chevron-right", theme_text_color="Custom", text_color=TEXT_SUB,
-                           size_hint=(None, None), size=(26, 26), pos_hint={"center_y": 0.5})
+                           size_hint=(None, None), size=(24, 24), pos_hint={"center_y": 0.5})
             cbox.add_widget(arrow)
             card.add_widget(cbox)
             card.bind(on_release=lambda x, t=target: self.app.goto(t))
