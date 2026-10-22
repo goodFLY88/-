@@ -29,8 +29,12 @@ version = 1.3
 #    PyPI 无 android wheel)而失败,失败后回退原始列表且正式安装用 --no-deps,
 #    requests 的传递依赖不会进列表 → 运行时 ImportError,必须显式写全。
 #    这些都是 py3-none-any wheel,only-binary 下可装。
-# 5) requests 锁大版本下限,避免未来破坏性变更。
-requirements = python3, kivy==2.3.1, kivymd==1.0.2, requests>=2.28.0, urllib3, certifi, idna, chardet
+# 5) pillow 必须显式声明：kivymd 的 elevation.py 模块顶层 import PIL，
+#    kivymd 自己不在 requires_dist 里传递带进来（且 dry-run 失败回退后
+#    传递依赖全丢），不写 pillow 启动即 ModuleNotFoundError: No module
+#    named 'PIL'（真机 logcat 实测）。pillow 走 p4a recipe NDK 编译。
+# 6) requests 锁大版本下限,避免未来破坏性变更。
+requirements = python3, kivy==2.3.1, kivymd==1.0.2, pillow, requests>=2.28.0, urllib3, certifi, idna, chardet
 # 屏幕方向（portrait=竖屏）
 orientation = portrait
 

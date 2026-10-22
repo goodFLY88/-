@@ -165,6 +165,12 @@ python mobile.py          # 或 python login_mobile.py 只登录
     kivymd 依赖 kivy（PyPI 无 android wheel）失败，失败后回退原始
     列表且正式安装用 `--no-deps`，requests 的传递依赖不进列表，
     不显式写全运行时会 ImportError
+34. `pillow` 显式声明（真机 logcat 实测定位）：kivymd 1.0.2 的
+    `elevation.py` 模块顶层 `import PIL`，而 kivymd 不会把 pillow
+    作为传递依赖带进来，不显式写就启动即
+    `ModuleNotFoundError: No module named 'PIL'` 闪退。
+    pillow 有 p4a recipe，走 NDK 编译，不影响 `--only-binary` 纯
+    Python 包的安装
 
 > 原版代码已完整保留在分支 `backup-before-optimize-20261022`，随时可还原：
 > `git checkout backup-before-optimize-20261022`
