@@ -84,24 +84,27 @@ def _patch_pil_rectangle():
 
 _patch_pil_rectangle()
 
-# ==================== 统一视觉规范 ====================
-# 主色（蓝色系）
+# ==================== 统一视觉规范（iOS 风格） ====================
+# 主色（保留蓝色系）
 PRIMARY = [0.13, 0.59, 0.95, 1]        # 主蓝 #2196F3
 PRIMARY_DARK = [0.08, 0.45, 0.78, 1]   # 深蓝
-BG = [0.96, 0.97, 0.98, 1]              # 页面浅灰底
-CARD_BG = [1, 1, 1, 1]                  # 卡片白
-TEXT_MAIN = [0.15, 0.17, 0.2, 1]        # 主文字深灰
-TEXT_SUB = [0.5, 0.55, 0.6, 1]          # 次级文字灰
+BG = [0.949, 0.949, 0.968, 1]          # iOS 系统灰 #F2F2F7
+CARD_BG = [1, 1, 1, 1]                  # 卡片纯白
+SEPARATOR = [0.78, 0.78, 0.80, 1]      # iOS 分割线 #C7C7CC
+TEXT_MAIN = [0.0, 0.0, 0.0, 1]         # 主文字纯黑（iOS 用纯黑）
+TEXT_SUB = [0.42, 0.42, 0.45, 1]       # 次级文字 iOS 灰 #6B6B6F
 GREEN = [0.2, 0.7, 0.35, 1]             # 成功绿
-RED = [0.9, 0.25, 0.2, 1]               # 失败红
+RED = [0.9, 0.25, 0.2, 1]               # 失败红（iOS 红 #FF3B30）
 ORANGE = [0.95, 0.6, 0.1, 1]            # 警告橙
+CARD_RADIUS = [14, 14, 14, 14]         # iOS 卡片大圆角
 
 
 def topbar(title, app=None):
+    """iOS 风格顶栏：白底、黑字、hairline 分割线。"""
     bar = MDTopAppBar(title=title)
-    bar.md_bg_color = PRIMARY
-    bar.specific_text_color = [1, 1, 1, 1]
-    bar.elevation = 4
+    bar.md_bg_color = CARD_BG
+    bar.specific_text_color = TEXT_MAIN
+    bar.elevation = 0
     if app is not None:
         bar.right_action_items = [["menu", lambda *_: app.nav_drawer.set_state("open")]]
     return bar
@@ -136,7 +139,7 @@ def make_card(**kw):
         if height is None:
             height = 64
         card = MDCard(size_hint=(1, None), height=height,
-                      md_bg_color=CARD_BG, radius=[12, 12, 12, 12],
+                      md_bg_color=CARD_BG, radius=CARD_RADIUS,
                       elevation=0, padding=padding, **kw)
         return card
     # 自适应高度：MDBoxLayout
@@ -160,19 +163,19 @@ class SidebarMenu(BoxLayout):
         self.spacing = 0
         self.app = app
         from kivymd.uix.label import MDIcon
-        # 顶部账号区（头像 + 昵称 + 学号）
+        # 顶部账号区（iOS 风格：白底 + 蓝头像 + 黑字）
         header = MDBoxLayout(size_hint_y=None, height=140,
-                             md_bg_color=PRIMARY, padding=(20, 20, 20, 16))
+                             md_bg_color=CARD_BG, padding=(20, 20, 20, 16))
         self.avatar = MDIcon(icon="account-circle", theme_text_color="Custom",
-                             text_color=[1, 1, 1, 1], size_hint=(None, None),
+                             text_color=PRIMARY, size_hint=(None, None),
                              size=(56, 56), pos_hint={"center_x": 0.5})
         header.add_widget(self.avatar)
         self.name_label = MDLabel(text="未登录", theme_text_color="Custom",
-                                  text_color=[1, 1, 1, 1], font_style="Subtitle1",
+                                  text_color=TEXT_MAIN, font_style="Subtitle1",
                                   halign="center", size_hint_y=None, height=30)
         header.add_widget(self.name_label)
         self.stu_label = MDLabel(text="登录后显示学号", theme_text_color="Custom",
-                                 text_color=[0.85, 0.9, 0.98, 1], halign="center",
+                                 text_color=TEXT_SUB, halign="center",
                                  size_hint_y=None, height=22)
         header.add_widget(self.stu_label)
         self.add_widget(header)
@@ -231,7 +234,7 @@ class LoginScreen(MDScreen):
         root = MDBoxLayout(orientation="vertical", md_bg_color=BG)
 
         # 顶部 LOGO 区
-        head = MDBoxLayout(orientation="vertical", size_hint_y=None, height=150,
+        head = MDBoxLayout(orientation="vertical", size_hint_y=None, height=130,
                            md_bg_color=PRIMARY, padding=(24, 0, 24, 0))
         from kivymd.uix.label import MDIcon
         logo = MDIcon(icon="school", theme_text_color="Custom",
@@ -820,6 +823,12 @@ class ICVEApp(MDApp):
     def build(self):
         self.theme_cls.theme_style = "Light"
         self.theme_cls.primary_palette = "Blue"
+        # 确保不进入全屏，让系统自带状态栏（时间/电量/信号）正常显示
+        try:
+            from kivy.core.window import Window
+            Window.fullscreen = False
+        except Exception:
+            pass
         # 中文字体替换：只改文本样式，跳过 "Icon" —— 它是 MDIcon 的图标
         # 字体（materialdesignicons），改成 NotoSansSC 会导致图标渲染成
         # 方框占位符（真机实测：登录页 school 图标、侧边栏图标全变成叉）
@@ -863,11 +872,27 @@ class ICVEApp(MDApp):
                 s.stop_monitor()
 
     def _set_status_bar_color(self):
+        """让安卓系统自带状态栏正常显示（非全屏），并设置白底深色图标。
+
+        关键：
+        1. 清除 FULLSCREEN / HIDE_NAVIGATION / IMMERSIVE 等系统 UI flag，
+           否则 p4a 默认可能把 App 设为全屏，系统状态栏被隐藏。
+        2. 状态栏背景设白色（#F2F2F7，与页面背景一致），图标设深色，
+           这样系统状态栏（时间/电量/信号）会正常显示在 App 顶部。
+        """
         try:
             from android import mActivity
             from jnius import autoclass
+            View = autoclass("android.view.View")
             Color = autoclass("android.graphics.Color")
-            mActivity.getWindow().setStatusBarColor(Color.parseColor("#2196F3"))
+            window = mActivity.getWindow()
+            # 清除全屏/沉浸式 flag，恢复系统状态栏
+            window.getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
+                View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR  # 深色状态栏图标
+            )
+            # 状态栏背景 = 页面浅灰底
+            window.setStatusBarColor(Color.parseColor("#F2F2F7"))
         except Exception as e:
             try:
                 self.login.status.text = f"状态栏设置失败: {e}"
