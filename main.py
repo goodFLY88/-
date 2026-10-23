@@ -877,27 +877,33 @@ class ICVEApp(MDApp):
         关键：
         1. 清除 FULLSCREEN / HIDE_NAVIGATION / IMMERSIVE 等系统 UI flag，
            否则 p4a 默认可能把 App 设为全屏，系统状态栏被隐藏。
-        2. 状态栏背景设白色（#F2F2F7，与页面背景一致），图标设深色，
-           这样系统状态栏（时间/电量/信号）会正常显示在 App 顶部。
+        2. 状态栏背景设白色（#F2F2F7，与页面背景一致），图标设深色。
+        3. 必须通过 runOnUiThread 在安卓 UI 主线程执行视图操作，否则抛
+           CalledFromWrongThreadException（真机实测：直接调用会把异常
+           堆栈渲染到界面，见截图）。
         """
         try:
             from android import mActivity
             from jnius import autoclass
             View = autoclass("android.view.View")
             Color = autoclass("android.graphics.Color")
-            window = mActivity.getWindow()
-            # 清除全屏/沉浸式 flag，恢复系统状态栏
-            window.getDecorView().setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
-                View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR  # 深色状态栏图标
-            )
-            # 状态栏背景 = 页面浅灰底
-            window.setStatusBarColor(Color.parseColor("#F2F2F7"))
-        except Exception as e:
-            try:
-                self.login.status.text = f"状态栏设置失败: {e}"
-            except Exception:
-                pass
+
+            def _apply():
+                try:
+                    window = mActivity.getWindow()
+                    window.getDecorView().setSystemUiVisibility(
+                        View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
+                        View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR  # 深色状态栏图标
+                    )
+                    window.setStatusBarColor(Color.parseColor("#F2F2F7"))
+                except Exception:
+                    pass
+
+            # 视图操作必须在 UI 主线程执行
+            mActivity.runOnUiThread(_apply)
+        except Exception:
+            # 静默失败：状态栏设置失败不影响 App 正常运行
+            pass
 
     def goto(self, name):
         self.sidebar.refresh()
