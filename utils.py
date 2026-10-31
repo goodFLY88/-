@@ -41,7 +41,7 @@ def _supports_ansi() -> bool:
         return False
 
 
-APP_VERSION = "1.3.0"  # 优化版:补齐 slider_auto、修打包/登录/账号存储等缺陷
+APP_VERSION = "1.2.0"
 
 
 def print_banner() -> None:
@@ -72,19 +72,15 @@ def print_menu(items: list) -> None:
     print("-" * 40, flush=True)
 
 
-def input_choice(prompt: str, valid: Optional[list] = None,
-                 default: Optional[str] = None) -> str:
+def input_choice(prompt: str, valid: Optional[list] = None) -> str:
     """读取用户输入并可选校验。
 
     :param prompt: 提示文本
     :param valid: 合法值列表,为 None 则不校验
-    :param default: 空输入时返回的默认值(为 None 则空输入需重试)
     :return: 用户输入(已 strip)
     """
     while True:
         choice = input(f"  {prompt}: ").strip()
-        if not choice and default is not None:
-            return default
         if valid is None or choice in valid:
             return choice
         print("  无效选择,请重试", flush=True)
@@ -98,16 +94,15 @@ def input_int(prompt: str, min_val: int = 0, max_val: Optional[int] = None) -> O
     :param max_val: 最大值(含),None 不限
     :return: 整数或 None
     """
-    hint = f"{min_val}" if max_val is None else f"{min_val}~{max_val}"
     while True:
-        raw = input(f"  {prompt} [{hint}, 回车取消]: ").strip()
+        raw = input(f"  {prompt}: ").strip()
         if raw == "":
             return None
         if raw.isdigit():
             val = int(raw)
             if val >= min_val and (max_val is None or val <= max_val):
                 return val
-        print(f"  请输入 {hint} 之间的数字", flush=True)
+        print(f"  请输入 {min_val}~{max_val or '∞'} 之间的数字", flush=True)
 
 
 def truncate(text: str, max_len: int = 40) -> str:

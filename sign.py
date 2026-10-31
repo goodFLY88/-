@@ -8,33 +8,18 @@
 
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from typing import Optional
 
 from zjy_client import ZjyClient
 from utils import log
 
-# 签到类型映射(唯一权威来源:与 zjy_client.do_sign 分支一致,signType==3 走二维码)
+
+# 签到类型映射（手机界面引用；signType==3 走二维码）
 SIGN_TYPE_MAP = {"1": "普通", "2": "手势", "3": "二维码", "4": "位置", "5": "人脸"}
 
-# 签到状态映射
+# 签到状态映射（手机界面引用）
 SIGN_STATUS_MAP = {"0": "未签", "1": "已签", "2": "迟到", "3": "请假",
                    "4": "病假", "5": "事假"}
-
-
-def sign_is_ended(sign: dict) -> bool:
-    """判断签到是否已结束(优先看 endTime,缺失时用 myStatus 兜底)。
-
-    原逻辑在 main.py / sign.batch_sign 里重复了三份,统一收在这里。
-    """
-    end_time = sign.get("endTime", "")
-    if end_time:
-        try:
-            end_dt = datetime.strptime(str(end_time)[:19], "%Y-%m-%d %H:%M:%S")
-            return end_dt < datetime.now()
-        except Exception:
-            return sign.get("myStatus", "0") != "0"
-    # 无 endTime,用 myStatus 兜底(有记录视为已结束)
-    return sign.get("myStatus", "0") != "0"
 
 
 def convert_gesture(raw) -> str:
@@ -119,6 +104,9 @@ def get_signs(client: ZjyClient, class_id: str, course_info_id: str, course_id: 
         return []
 
     # 步骤三:并发获取当前学生在每个签到活动中的签到状态
+    my_name = client.user_info.get("nickName", "") if client.user_info else ""
+    my_stu_id = client.stu_id
+
     def fetch_student_status(sign_act):
         sid = sign_act["signId"]
 
@@ -131,27 +119,34 @@ def get_signs(client: ZjyClient, class_id: str, course_info_id: str, course_id: 
             if d.get("gesture") and not sign_act["gesture"]:
                 sign_act["gesture"] = convert_gesture(d.get("gesture"))
 
-        # 复用 client 的签到记录查询/匹配(与 CLI 改签同一条链路),
-        # 保证能拿到记录主键 id —— 否则"已签→未签"改签覆盖不了原记录
+        # 获取出勤记录,提取当前账号状态
         my_record = None
-        try:
-            records = client._fetch_sign_records(sid, class_id)
-            my_record = client._match_my_record(records) if records else None
-        except Exception as e:
-            log(f"查询签到记录异常: {e}", "ERROR")
+        for api in ["spoc/courseFaceTeachSignStudent/page/listAll",
+                    "spoc/courseFaceTeachSignStudent/list",
+                    "spoc/courseFaceTeachSignStudent/page/notSign"]:
+            data3 = client.api_get(api, {
+                "signId": sid, "classId": class_id,
+                "pageNum": "1", "pageSize": "2000",
+            })
+            if data3:
+                rows = client.extract_rows(data3)
+                for r in rows:
+                    rname = r.get("studentName", "")
+                    rsid = r.get("studentId", "")
+                    if (my_name and my_name == rname) or (my_stu_id and str(my_stu_id) == str(rsid)):
+                        my_record = r
+                        break
+            if my_record:
+                break
 
         if my_record:
             sign_act["myStatus"] = str(my_record.get("signResultType", "0"))
             sign_act["mySignTime"] = (my_record.get("signTime") or
                                        my_record.get("createTime") or
                                        my_record.get("attendTime") or "")
-            # 关键:记录主键 id —— 改签(尤其"已签→未签")必须带 id 走 PUT,
-            # 否则 do_sign_action 只能 POST 新建,覆盖不了已存在的已签记录
-            sign_act["recordId"] = my_record.get("id", "") or my_record.get("signStudentId", "")
         else:
             sign_act["myStatus"] = "0"
             sign_act["mySignTime"] = ""
-            sign_act["recordId"] = ""
 
         return sign_act
 
@@ -227,8 +222,18 @@ def batch_sign(client: ZjyClient, signs: list, class_id: str,
         if sign.get("myStatus") == "1":
             continue
 
-        # 基于 endTime 判断签到是否已结束(统一走 sign_is_ended)
-        sign["isEnded"] = sign_is_ended(sign)
+        # 基于 endTime 判断签到是否已结束
+        end_time = sign.get("endTime", "")
+        if end_time:
+            try:
+                from datetime import datetime
+                end_dt = datetime.strptime(end_time[:19], "%Y-%m-%d %H:%M:%S")
+                sign["isEnded"] = end_dt < datetime.now()
+            except Exception:
+                sign["isEnded"] = False
+        else:
+            # 无 endTime,用 myStatus 兜底(有记录视为已结束)
+            sign["isEnded"] = sign.get("myStatus", "0") != "0"
 
         result = one_click_sign(client, sign)
         if result["code"] == 200:
@@ -255,23 +260,21 @@ def do_sign_action(client: ZjyClient, payload: dict) -> dict:
     :return: {"code": 200/500, "msg": "..."}
     """
     nickname = (client.user_info or {}).get("nickName", "未知")
-    sign_id = payload.get("signId", "")
-    sign_result_type = payload.get("signResultType", "1")
-    if not sign_id:
-        return {"code": 500, "msg": "缺少 signId,无法改签"}
+    sign_id = payload["signId"]
+    sign_result_type = payload["signResultType"]
 
     if not payload.get("id"):
         # 无ID=未签到记录,POST创建(必须包含学生信息字段)
         body = {
-            "classId": payload.get("classId", ""),
-            "courseId": payload.get("courseId", ""),
-            "courseInfoId": payload.get("courseInfoId", ""),
+            "classId": payload["classId"],
+            "courseId": payload["courseId"],
+            "courseInfoId": payload["courseInfoId"],
             "signId": sign_id,
             "signResultType": sign_result_type,
-            "teachId": payload.get("teachId", ""),
-            "studentId": payload.get("studentId", ""),
-            "studentName": payload.get("studentName", ""),
-            "studentNo": payload.get("studentNo", ""),
+            "teachId": payload["teachId"],
+            "studentId": payload["studentId"],
+            "studentName": payload["studentName"],
+            "studentNo": payload["studentNo"],
         }
         res = client.api_post("spoc/courseFaceTeachSignStudent", body)
         log(f"[{nickname}] [改签] POST创建: code={res.get('code') if res else 'None'}, msg={res.get('msg','') if res else '无响应'}", "DEBUG")
@@ -295,28 +298,28 @@ def do_sign_action(client: ZjyClient, payload: dict) -> dict:
                     "id": record_id,
                     "signId": sign_id,
                     "signResultType": sign_result_type,
-                    "classId": payload.get("classId", ""),
-                    "courseId": payload.get("courseId", ""),
-                    "courseInfoId": payload.get("courseInfoId", ""),
-                    "teachId": payload.get("teachId", ""),
-                    "studentId": payload.get("studentId", ""),
-                    "studentName": payload.get("studentName", ""),
-                    "studentNo": payload.get("studentNo", ""),
+                    "classId": payload["classId"],
+                    "courseId": payload["courseId"],
+                    "courseInfoId": payload["courseInfoId"],
+                    "teachId": payload["teachId"],
+                    "studentId": payload["studentId"],
+                    "studentName": payload["studentName"],
+                    "studentNo": payload["studentNo"],
                 })
                 log(f"[{nickname}] [改签] PUT(full): code={res.get('code') if res else 'None'}, msg={res.get('msg','') if res else '无响应'}", "DEBUG")
 
             # PUT都失败,回退POST(必须包含学生信息字段)
             if not res or res.get("code") != 200:
                 post_body = {
-                    "classId": payload.get("classId", ""),
-                    "courseId": payload.get("courseId", ""),
-                    "courseInfoId": payload.get("courseInfoId", ""),
+                    "classId": payload["classId"],
+                    "courseId": payload["courseId"],
+                    "courseInfoId": payload["courseInfoId"],
                     "signId": sign_id,
                     "signResultType": sign_result_type,
-                    "teachId": payload.get("teachId", ""),
-                    "studentId": payload.get("studentId", ""),
-                    "studentName": payload.get("studentName", ""),
-                    "studentNo": payload.get("studentNo", ""),
+                    "teachId": payload["teachId"],
+                    "studentId": payload["studentId"],
+                    "studentName": payload["studentName"],
+                    "studentNo": payload["studentNo"],
                 }
                 res = client.api_post("spoc/courseFaceTeachSignStudent", post_body)
                 log(f"[{nickname}] [改签] POST(回退): code={res.get('code') if res else 'None'}, msg={res.get('msg','') if res else '无响应'}", "DEBUG")

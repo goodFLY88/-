@@ -8,15 +8,13 @@
    SSO 重定向回调带 token 参数,再走同样的换 token 流程
 """
 
-import threading
-import time
 import webbrowser
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Optional
 from urllib.parse import urlparse, parse_qs
 
 from zjy_client import ZjyClient, BASE_URL, SSO_BASE, session, _extract_access_token
-from accounts import save_account, list_accounts
+from accounts import save_account, load_accounts, list_accounts
 from utils import log
 
 # 回调服务端口
@@ -29,8 +27,6 @@ LOGIN_TIMEOUT = 300
 
 # 全局变量:回调捕获到的 token
 _captured_token: Optional[str] = None
-# 回调到达事件(比轮询全局变量更稳,避免可见性延迟)
-_captured_event = threading.Event()
 
 
 class CallbackHandler(BaseHTTPRequestHandler):
@@ -43,7 +39,6 @@ class CallbackHandler(BaseHTTPRequestHandler):
 
         if "token" in params:
             _captured_token = params["token"][0]
-            _captured_event.set()
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
@@ -57,13 +52,6 @@ class CallbackHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         """静默 HTTP 访问日志。"""
         pass
-
-
-def _reset_callback_state() -> None:
-    """重置回调捕获状态(每次启动回调服务前调用)。"""
-    global _captured_token
-    _captured_token = None
-    _captured_event.clear()
 
 
 def login() -> Optional[ZjyClient]:
@@ -85,10 +73,7 @@ def login() -> Optional[ZjyClient]:
 
 
 def _try_saved_accounts() -> Optional[ZjyClient]:
-    """尝试用已保存的 token 登录,成功返回 client。
-
-    输入非法时重问;回车/q 返回 None(由调用方决定下一步,通常是登录新账号)。
-    """
+    """尝试用已保存的 token 登录,成功返回 client。"""
     accounts = list_accounts()
     if not accounts:
         return None
@@ -98,20 +83,15 @@ def _try_saved_accounts() -> Optional[ZjyClient]:
         print(f"  [{i + 1}] {name} ({info.get('userName', '?')})", flush=True)
     print(f"  [0] 登录新账号", flush=True)
 
-    while True:
-        choice = input(f"\n  选择账号 [0-{len(accounts)}, 回车=q 返回]: ").strip().lower()
-        if choice in ("", "q"):
-            return None
-        if not choice.isdigit():
-            log("  请输入数字编号", "WARNING")
-            continue
-        idx = int(choice)
-        if idx == 0:
-            return None
-        if idx < 1 or idx > len(accounts):
-            log("无效选择", "WARNING")
-            continue
-        break
+    choice = input(f"\n  选择账号 [0-{len(accounts)}]: ").strip()
+    if not choice.isdigit():
+        return None
+    idx = int(choice)
+    if idx == 0:
+        return None
+    if idx < 1 or idx > len(accounts):
+        log("无效选择", "WARNING")
+        return None
 
     name, info = accounts[idx - 1]
     saved_token = info.get("token", "")
@@ -177,7 +157,6 @@ def _auto_slider_login() -> Optional[str]:
         from slider_auto import AutoSlider
     except Exception as e:
         log(f"  自动登录模块不可用({e}),转入人工登录", "WARNING")
-        log("  如需全自动滑块登录: pip install -r requirements.txt", "INFO")
         return None
     # 依赖关前置:缺依赖时先问是否自动安装,避免用户输完账密才被告知装不了
     if not slider_auto.deps_ready():
@@ -208,7 +187,8 @@ def _auto_slider_login() -> Optional[str]:
 
 def _browser_login() -> Optional[ZjyClient]:
     """登录新账号:先全自动滑块登录,失败回退 9527 人工回调流程。"""
-    _reset_callback_state()
+    global _captured_token
+    _captured_token = None
 
     # 步骤1:全自动滑块登录(账密 → 自动过滑块 → sso_token → bearer_token)
     sso_token = _auto_slider_login()
@@ -241,9 +221,10 @@ def _browser_login() -> Optional[ZjyClient]:
         return None
 
     server.timeout = 1
-    deadline = time.monotonic() + LOGIN_TIMEOUT
-    while not _captured_event.is_set() and time.monotonic() < deadline:
+    for _ in range(LOGIN_TIMEOUT):
         server.handle_request()
+        if _captured_token:
+            break
     server.server_close()
 
     if not _captured_token:

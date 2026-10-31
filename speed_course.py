@@ -339,7 +339,7 @@ def run_speed_course(client: ZjyClient, course: dict, speed_type: str = "all",
     :param client: ZjyClient 实例
     :param course: 课程 dict,需含 classId/courseInfoId/courseId/_courseType/courseName
     :param speed_type: "all" | "progress" | "exam" | "discussion"
-    :param progress_cb: 可选进度回调 progress_cb(stage_name, percent)
+    :param progress_cb: 可选进度回调 progress_cb(stage_name, percent)，回调异常不影响主流程
 
     MOOC 重叠流水线(2026-09-14 生产移植):任务开头先把全部未交卷"点开"起表
     (205 时间闸门只认 wall-clock,起表后刷课件/讨论的耗时天然攒够答题时间)→
@@ -354,6 +354,15 @@ def run_speed_course(client: ZjyClient, course: dict, speed_type: str = "all",
     nickname = (client.user_info or {}).get("nickName", "未知")
 
     log(f"[{nickname}] 🚀 启动刷课: {course_name} (类型:{ctype}, 模式:{speed_type})", "INFO")
+
+    def _cb(stage, percent):
+        if progress_cb:
+            try:
+                progress_cb(stage, percent)
+            except Exception:
+                pass
+
+    _cb("启动", 5)
 
     _mooc_exam_pending = None   # None=未探测;list=尚未成功提交的未交卷
     _mooc_stats = {"success": 0, "fail": 0, "skip": 0, "window_skip": 0}
@@ -374,23 +383,23 @@ def run_speed_course(client: ZjyClient, course: dict, speed_type: str = "all",
 
         # Part 1: 刷进度
         if speed_type in ["all", "progress"]:
-            if progress_cb: progress_cb("刷进度", 15)
             _brush_progress(client, nickname, class_id, course_info_id, course_id, ctype)
+            _cb("刷进度", 30)
 
         # Part 1.5: 自动答题(MOOC 走成熟度分流+并发提交;SPOC/RESOURCE 原顺序模式)
         if speed_type in ["all", "exam"]:
-            if progress_cb: progress_cb("自动答题", 50)
             if ctype == "MOOC":
                 _mooc_exam_pending = _brush_exam_mooc_stage1(
                     client, nickname, class_id, course_info_id,
                     course_id, _mooc_exam_pending, _mooc_stats)
             else:
                 _brush_exam(client, nickname, class_id, course_info_id, course_id, ctype)
+            _cb("自动答题", 65)
 
         # Part 2: 刷讨论
         if speed_type in ["all", "discussion"]:
-            if progress_cb: progress_cb("刷讨论", 75)
             _brush_discussion(client, nickname, class_id, course_info_id, course_id, ctype)
+            _cb("刷讨论", 85)
 
         # Part 2.5: MOOC 未成熟卷补交(刷讨论期间已继续垫墙钟,并发补等剩余差额)
         if (ctype == "MOOC" and speed_type in ("all", "exam") and _mooc_exam_pending):
@@ -409,8 +418,8 @@ def run_speed_course(client: ZjyClient, course: dict, speed_type: str = "all",
     except Exception as e:
         log(f"[{nickname}] 刷课异常: {e}", "ERROR")
 
-    if progress_cb: progress_cb("完成", 100)
     log(f"[{nickname}] 🏁 刷课结束: {course_name}", "INFO")
+    _cb("完成", 100)
 
 
 def _brush_exam_mooc_stage1(client: ZjyClient, nickname: str, class_id: str,
