@@ -266,20 +266,6 @@ def do_sign_action(client: ZjyClient, payload: dict) -> dict:
     sign_id = payload["signId"]
     sign_result_type = payload["signResultType"]
 
-    # 改成"未签到"(0):本质是删除该学生的出勤记录,而不是写一条类型0的记录
-    if str(sign_result_type) == "0" and payload.get("id"):
-        res = client.api_delete("spoc/courseFaceTeachSignStudent", {
-            "id": payload["id"],
-            "signId": sign_id,
-            "classId": payload["classId"],
-        })
-        log(f"[{nickname}] [改签] DELETE未签到: code={res.get('code') if res else 'None'}, msg={res.get('msg','') if res else '无响应'}", "DEBUG")
-        if res and res.get("code") == 200:
-            log(f"[{nickname}] 已改为未签到(记录已删除)", "INFO")
-            return {"code": 200, "msg": "已改为未签到"}
-        if res:
-            return {"code": 500, "msg": res.get("msg", "删除失败")}
-
     if not payload.get("id"):
         # 无ID=未签到记录,POST创建(必须包含学生信息字段)
         body = {
