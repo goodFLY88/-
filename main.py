@@ -84,19 +84,20 @@ def _patch_pil_rectangle():
 
 _patch_pil_rectangle()
 
-# ==================== 统一视觉规范（iOS 风格） ====================
-# 主色（保留蓝色系）
-PRIMARY = [0.13, 0.59, 0.95, 1]        # 主蓝 #2196F3
-PRIMARY_DARK = [0.08, 0.45, 0.78, 1]   # 深蓝
-BG = [0.949, 0.949, 0.968, 1]          # iOS 系统灰 #F2F2F7
+# ==================== 统一视觉规范（Galaxy 现代风格） ====================
+# 主色（现代蓝）
+PRIMARY = [0.23, 0.51, 0.96, 1]        # 主蓝 #3B82F6
+PRIMARY_DARK = [0.17, 0.40, 0.85, 1]   # 深蓝 #2B6BD9
+BG = [0.933, 0.945, 0.965, 1]          # 柔和冷调浅灰 #EEF1F6
 CARD_BG = [1, 1, 1, 1]                  # 卡片纯白
-SEPARATOR = [0.78, 0.78, 0.80, 1]      # iOS 分割线 #C7C7CC
-TEXT_MAIN = [0.0, 0.0, 0.0, 1]         # 主文字纯黑（iOS 用纯黑）
-TEXT_SUB = [0.42, 0.42, 0.45, 1]       # 次级文字 iOS 灰 #6B6B6F
-GREEN = [0.2, 0.7, 0.35, 1]             # 成功绿
-RED = [0.9, 0.25, 0.2, 1]               # 失败红（iOS 红 #FF3B30）
-ORANGE = [0.95, 0.6, 0.1, 1]            # 警告橙
-CARD_RADIUS = [14, 14, 14, 14]         # iOS 卡片大圆角
+SEPARATOR = [0.86, 0.88, 0.91, 1]      # 柔和分割线 #DBE0E8
+TEXT_MAIN = [0.11, 0.13, 0.17, 1]      # 主文字（带冷调，非纯黑）#1C212B
+TEXT_SUB = [0.45, 0.49, 0.55, 1]       # 次级文字 #737D8C
+GREEN = [0.20, 0.70, 0.40, 1]          # 成功绿 #33B366
+RED = [0.92, 0.27, 0.24, 1]            # 失败红 #EB453D
+ORANGE = [0.96, 0.62, 0.14, 1]         # 警告橙 #F59E24
+CARD_RADIUS = [20, 20, 20, 20]         # 卡片大圆角
+BTN_RADIUS = [14, 14, 14, 14]          # 按钮圆角
 
 
 def topbar(title, app=None):
@@ -152,6 +153,13 @@ def make_card(**kw):
     return card
 
 
+def primary_button(text, height=50, bg=None, **kw):
+    """Galaxy 风格统一按钮：圆角、饱满、语义配色。"""
+    btn = MDRaisedButton(text=text, size_hint=(1, None), height=height,
+                         radius=BTN_RADIUS, md_bg_color=bg or PRIMARY, **kw)
+    return btn
+
+
 LOGIN_URL = f"{SSO_BASE}/h5/?mode=simple&source=15&redirect=http://127.0.0.1:9527#/login"
 
 
@@ -163,19 +171,19 @@ class SidebarMenu(BoxLayout):
         self.spacing = 0
         self.app = app
         from kivymd.uix.label import MDIcon
-        # 顶部账号区（iOS 风格：白底 + 蓝头像 + 黑字）
+        # 顶部账号区（Galaxy 风格：主色背景 + 白色头像与文字）
         header = MDBoxLayout(size_hint_y=None, height=140,
-                             md_bg_color=CARD_BG, padding=(20, 20, 20, 16))
+                             md_bg_color=PRIMARY, padding=(20, 20, 20, 16))
         self.avatar = MDIcon(icon="account-circle", theme_text_color="Custom",
-                             text_color=PRIMARY, size_hint=(None, None),
+                             text_color=[1, 1, 1, 1], size_hint=(None, None),
                              size=(56, 56), pos_hint={"center_x": 0.5})
         header.add_widget(self.avatar)
         self.name_label = MDLabel(text="未登录", theme_text_color="Custom",
-                                  text_color=TEXT_MAIN, font_style="Subtitle1",
+                                  text_color=[1, 1, 1, 1], font_style="Subtitle1",
                                   halign="center", size_hint_y=None, height=30)
         header.add_widget(self.name_label)
         self.stu_label = MDLabel(text="登录后显示学号", theme_text_color="Custom",
-                                 text_color=TEXT_SUB, halign="center",
+                                 text_color=[0.88, 0.92, 0.98, 1], halign="center",
                                  size_hint_y=None, height=22)
         header.add_widget(self.stu_label)
         self.add_widget(header)
@@ -274,8 +282,7 @@ class LoginScreen(MDScreen):
         self.link_label.bind(
             width=lambda w, x: setattr(w, "text_size", (x, None)))
         link_card.add_widget(self.link_label)
-        copy_btn = MDRaisedButton(text="复制登录链接", size_hint=(1, None), height=46,
-                                  md_bg_color=PRIMARY)
+        copy_btn = primary_button("复制登录链接", height=46)
         copy_btn.bind(on_release=lambda *_: self.copy_link())
         link_card.add_widget(copy_btn)
         box.add_widget(link_card)
@@ -285,16 +292,15 @@ class LoginScreen(MDScreen):
         paste_card.add_widget(MDLabel(text="② 浏览器登录后，复制地址栏网址粘贴到下面", theme_text_color="Custom",
                                       text_color=TEXT_MAIN, size_hint_y=None, height=28))
         self.input = MDTextField(hint_text="粘贴 token 网址", size_hint_y=None, height=54,
-                                 mode="line", line_color_normal=PRIMARY,
+                                 mode="rectangle", radius=[12, 12, 12, 12],
+                                 line_color_normal=SEPARATOR,
                                  line_color_focus=PRIMARY)
         paste_card.add_widget(self.input)
         row = MDBoxLayout(orientation="horizontal", spacing=10, size_hint_y=None, height=46)
-        paste_btn = MDRaisedButton(text="粘贴", size_hint=(1, None), height=46,
-                                   md_bg_color=PRIMARY_DARK)
+        paste_btn = primary_button("粘贴", height=46, bg=PRIMARY_DARK)
         paste_btn.bind(on_release=lambda *_: self.do_paste())
         row.add_widget(paste_btn)
-        login_btn = MDRaisedButton(text="登 录", size_hint=(1, None), height=46,
-                                   md_bg_color=PRIMARY)
+        login_btn = primary_button("登 录", height=46)
         login_btn.bind(on_release=lambda *_: self.do_login())
         row.add_widget(login_btn)
         paste_card.add_widget(row)
@@ -459,8 +465,7 @@ class AccountsScreen(MDScreen):
         box.add_widget(section_label("已保存账号 · 点击删除"))
         self.list = MDList()
         box.add_widget(self.list)
-        back = MDRaisedButton(text="返回控制台", size_hint=(1, None), height=48,
-                              md_bg_color=PRIMARY)
+        back = primary_button("返回控制台", height=48)
         back.bind(on_release=lambda *_: self.app.goto("dashboard"))
         box.add_widget(back)
         scroll.add_widget(box)
@@ -531,18 +536,15 @@ class CourseSelectScreen(MDScreen):
         # 区块：操作
         root.add_widget(section_label("操作"))
         # 操作按钮
-        self.action_btn = MDRaisedButton(text=action_label, size_hint=(1, None), height=50,
-                                         md_bg_color=PRIMARY)
+        self.action_btn = primary_button(action_label, height=50)
         self.action_btn.bind(on_release=lambda *_: self.do_action())
         root.add_widget(self.action_btn)
         if action_key == "sign":
-            self.custom_btn = MDRaisedButton(text="自定义改签", size_hint=(1, None), height=46,
-                                             md_bg_color=[0.9, 0.9, 0.9, 1])
-            self.custom_btn.text_color = [0.15, 0.15, 0.15, 1]
+            self.custom_btn = primary_button("自定义改签", height=46, bg=SEPARATOR)
+            self.custom_btn.text_color = TEXT_MAIN
             self.custom_btn.bind(on_release=lambda *_: self.custom_sign())
             root.add_widget(self.custom_btn)
-            self.monitor_btn = MDRaisedButton(text="启动自动监听签到", size_hint=(1, None), height=46,
-                                              md_bg_color=GREEN)
+            self.monitor_btn = primary_button("启动自动监听签到", height=46, bg=GREEN)
             self.monitor_btn.bind(on_release=lambda *_: self.toggle_monitor())
             root.add_widget(self.monitor_btn)
             self._monitoring = False
@@ -674,7 +676,7 @@ class CourseSelectScreen(MDScreen):
         if self._monitoring:
             self._monitoring = False
             self.monitor_btn.text = "启动自动监听签到"
-            self.monitor_btn.md_bg_color = [0.2, 0.7, 0.3, 1]
+            self.monitor_btn.md_bg_color = GREEN
             self.append(">> 已停止自动监听")
         else:
             if not self.app.client or not self.app.client.user_info:
@@ -682,7 +684,7 @@ class CourseSelectScreen(MDScreen):
                 return
             self._monitoring = True
             self.monitor_btn.text = "停止监听"
-            self.monitor_btn.md_bg_color = [0.9, 0.3, 0.2, 1]
+            self.monitor_btn.md_bg_color = RED
             self.append(">> 启动自动监听（每30秒扫描所有课程）")
             self._monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
             self._monitor_thread.start()
@@ -778,7 +780,7 @@ class CourseSelectScreen(MDScreen):
         grid = GridLayout(cols=2, spacing=8, size_hint_y=None)
         grid.bind(minimum_height=grid.setter("height"))
         for st, label in SIGN_STATUS_MAP.items():
-            btn = MDRaisedButton(text=label, size_hint=(1, None), height=50)
+            btn = primary_button(label, height=50)
             btn.bind(on_release=lambda x, s=sign, st=st: self._do_custom_sign(s, st))
             grid.add_widget(btn)
         layout.add_widget(grid)
