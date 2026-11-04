@@ -123,13 +123,30 @@ def section_label(text):
                    size_hint_y=None, height=28, padding=(16, 4))
 
 
+def _round_bg(w, color=None, radius=None):
+    """给任意容器加圆角底（MDBoxLayout 本身不支持 radius，只能 canvas 画）。"""
+    from kivy.graphics import Color, RoundedRectangle
+    color = color or CARD_BG
+    radius = radius or CARD_RADIUS
+    with w.canvas.before:
+        Color(*color)
+        rect = RoundedRectangle(pos=w.pos, size=w.size, radius=radius)
+
+    def _sync(*_):
+        rect.pos = w.pos
+        rect.size = w.size
+
+    w.bind(pos=_sync, size=_sync)
+    return w
+
+
 def make_card(**kw):
-    """统一卡片容器。自适应高度用 MDBoxLayout，可点击用 MDCard。
+    """统一卡片容器（圆角白底）。自适应高度用 MDBoxLayout，可点击用 MDCard。
 
     MDCard 的 height 不会随内容自动撑开（真机实测导致内容互相重叠挤压），
     所以：
-    - 自适应高度卡片 → MDBoxLayout（bind minimum_height）
-    - 可点击卡片（需 on_release）→ MDCard（固定 height）
+    - 自适应高度卡片 → MDBoxLayout（bind minimum_height + canvas 圆角底）
+    - 可点击卡片（需 on_release）→ MDCard（固定 height，自带 radius）
     通过 clickable 参数区分。
     """
     clickable = kw.pop("clickable", False)
@@ -143,13 +160,15 @@ def make_card(**kw):
                       md_bg_color=CARD_BG, radius=CARD_RADIUS,
                       elevation=0, padding=padding, **kw)
         return card
-    # 自适应高度：MDBoxLayout
+    # 自适应高度：MDBoxLayout + 圆角 canvas 底（md_bg_color 设透明，
+    # 否则会同时画出方块背景，圆角外面露出直角）
     card = MDBoxLayout(orientation="vertical", size_hint_y=None,
-                       md_bg_color=CARD_BG, padding=padding, **kw)
+                       md_bg_color=[1, 1, 1, 0], padding=padding, **kw)
     if height is not None:
         card.height = height
     else:
         card.bind(minimum_height=card.setter("height"))
+    _round_bg(card)
     return card
 
 
@@ -241,19 +260,28 @@ class LoginScreen(MDScreen):
         self.app = app
         root = MDBoxLayout(orientation="vertical", md_bg_color=BG)
 
-        # 顶部 LOGO 区
-        head = MDBoxLayout(orientation="vertical", size_hint_y=None, height=130,
-                           md_bg_color=PRIMARY, padding=(24, 0, 24, 0))
+        # 顶部 LOGO 区（左图标 + 右两行文字）
+        # 注意：MDIcon 在 __init__ 里强制 size_hint=(None,None)、size=texture_size，
+        # 用 size_hint=(1,None), height=64 会被覆盖 → 图标缩成小点、标题被挤到
+        # 屏幕最上沿甚至裁切（真机截图实测）。必须显式给 size 并放进横向布局。
+        head = MDBoxLayout(orientation="vertical", size_hint_y=None, height=80,
+                           md_bg_color=PRIMARY, padding=(20, 16, 20, 16))
         from kivymd.uix.label import MDIcon
+        hrow = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=48,
+                           spacing=12)
         logo = MDIcon(icon="school", theme_text_color="Custom",
-                      text_color=[1, 1, 1, 1], size_hint=(1, None), height=64)
-        head.add_widget(logo)
-        head.add_widget(MDLabel(text="智慧职教 · 学习助手", theme_text_color="Custom",
-                                text_color=[1, 1, 1, 1], font_style="H5",
-                                halign="center", size_hint_y=None, height=34))
-        head.add_widget(MDLabel(text="登录 · 刷课 · 答题 · 签到", theme_text_color="Custom",
-                                text_color=[0.85, 0.9, 0.98, 1], halign="center",
-                                size_hint_y=None, height=22))
+                      text_color=[1, 1, 1, 1], size_hint=(None, None),
+                      size=(40, 40), pos_hint={"center_y": 0.5})
+        hrow.add_widget(logo)
+        htxt = MDBoxLayout(orientation="vertical", size_hint_x=1, spacing=0)
+        htxt.add_widget(MDLabel(text="智慧职教 · 学习助手", theme_text_color="Custom",
+                                text_color=[1, 1, 1, 1], font_style="H6",
+                                size_hint_y=None, height=26))
+        htxt.add_widget(MDLabel(text="登录 · 刷课 · 答题 · 签到", theme_text_color="Custom",
+                                text_color=[0.88, 0.93, 1, 1],
+                                size_hint_y=None, height=20))
+        hrow.add_widget(htxt)
+        head.add_widget(hrow)
         root.add_widget(head)
 
         scroll = ScrollView()
@@ -294,7 +322,10 @@ class LoginScreen(MDScreen):
         self.input = MDTextField(hint_text="粘贴 token 网址", size_hint_y=None, height=54,
                                  mode="rectangle", radius=[12, 12, 12, 12],
                                  line_color_normal=SEPARATOR,
-                                 line_color_focus=PRIMARY)
+                                 line_color_focus=PRIMARY,
+                                 fill_color_normal=[0.949, 0.957, 0.976, 1],
+                                 fill_color_focus=[0.929, 0.945, 0.976, 1],
+                                 hint_text_color_normal=[0.55, 0.58, 0.63, 1])
         paste_card.add_widget(self.input)
         row = MDBoxLayout(orientation="horizontal", spacing=10, size_hint_y=None, height=46)
         paste_btn = primary_button("粘贴", height=46, bg=PRIMARY_DARK)
@@ -310,6 +341,12 @@ class LoginScreen(MDScreen):
                               text_color=TEXT_SUB, halign="center",
                               size_hint_y=None, height=36)
         box.add_widget(self.status)
+
+        # 页脚：版本 + 使用提示（避免底部大片空白显得空旷）
+        box.add_widget(MDLabel(text="v1.3 · 智慧职教工具　|　仅供学习辅助",
+                               theme_text_color="Custom",
+                               text_color=[0.72, 0.75, 0.80, 1], halign="center",
+                               size_hint_y=None, height=40))
         scroll.add_widget(box)
         root.add_widget(scroll)
         self.add_widget(root)
@@ -874,30 +911,32 @@ class ICVEApp(MDApp):
                 s.stop_monitor()
 
     def _set_status_bar_color(self):
-        """让安卓系统自带状态栏正常显示（非全屏），并设置白底深色图标。
+        """让安卓系统自带状态栏可见（非全屏），并设浅色底 + 深色图标。
 
-        关键：
-        1. 清除 FULLSCREEN / HIDE_NAVIGATION / IMMERSIVE 等系统 UI flag，
-           否则 p4a 默认可能把 App 设为全屏，系统状态栏被隐藏。
-        2. 状态栏背景设白色（#F2F2F7，与页面背景一致），图标设深色。
-        3. 必须通过 runOnUiThread 在安卓 UI 主线程执行视图操作，否则抛
-           CalledFromWrongThreadException（真机实测：直接调用会把异常
-           堆栈渲染到界面，见截图）。
+        要点：
+        1. 清掉 FLAG_FULLSCREEN —— p4a/SDL 默认可能是全屏，只改
+           setSystemUiVisibility 不会让状态栏出现（真机实测：仍是全屏）；
+        2. 加 FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS，setStatusBarColor 才生效；
+        3. 系统 UI flag 只保留 LIGHT_STATUS_BAR（深色图标）。不要用
+           LAYOUT_FULLSCREEN/LAYOUT_STABLE —— 会把内容顶到状态栏后面被裁切；
+        4. 视图操作必须在安卓 UI 主线程（runOnUiThread），否则抛
+           CalledFromWrongThreadException（真机实测会把堆栈糊到界面）。
         """
         try:
             from android import mActivity
             from jnius import autoclass
             View = autoclass("android.view.View")
+            LP = autoclass("android.view.WindowManager$LayoutParams")
             Color = autoclass("android.graphics.Color")
 
             def _apply():
                 try:
                     window = mActivity.getWindow()
+                    window.clearFlags(LP.FLAG_FULLSCREEN)
+                    window.addFlags(LP.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
                     window.getDecorView().setSystemUiVisibility(
-                        View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
-                        View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR  # 深色状态栏图标
-                    )
-                    window.setStatusBarColor(Color.parseColor("#F2F2F7"))
+                        View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR)
+                    window.setStatusBarColor(Color.parseColor("#EEF1F6"))
                 except Exception:
                     pass
 
