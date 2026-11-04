@@ -261,25 +261,27 @@ class LoginScreen(MDScreen):
         root = MDBoxLayout(orientation="vertical", md_bg_color=BG)
 
         # 顶部 LOGO 区（左图标 + 右两行文字）
-        # 注意：MDIcon 在 __init__ 里强制 size_hint=(None,None)、size=texture_size，
-        # 用 size_hint=(1,None), height=64 会被覆盖 → 图标缩成小点、标题被挤到
-        # 屏幕最上沿甚至裁切（真机截图实测）。必须显式给 size 并放进横向布局。
-        head = MDBoxLayout(orientation="vertical", size_hint_y=None, height=80,
-                           md_bg_color=PRIMARY, padding=(20, 16, 20, 16))
+        # 两个坑（真机 2K 屏实测）：
+        # 1) MDIcon 在 __init__ 里强制 size_hint=(None,None)、size=texture_size，
+        #    写 size_hint=(1,None), height=64 会被覆盖 → 图标缩成小点；
+        # 2) 中文字体 H6(24sp) 实际行高 > 26dp，固定 26 会让标题溢出压住副标题
+        #    （截图里两行文字叠在一起）。标题给 36dp、副标题 22dp。
+        head = MDBoxLayout(orientation="vertical", size_hint_y=None, height=96,
+                           md_bg_color=PRIMARY, padding=(20, 18, 20, 18))
         from kivymd.uix.label import MDIcon
-        hrow = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=48,
-                           spacing=12)
+        hrow = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=60,
+                           spacing=14)
         logo = MDIcon(icon="school", theme_text_color="Custom",
                       text_color=[1, 1, 1, 1], size_hint=(None, None),
-                      size=(40, 40), pos_hint={"center_y": 0.5})
+                      size=(44, 44), pos_hint={"center_y": 0.5})
         hrow.add_widget(logo)
-        htxt = MDBoxLayout(orientation="vertical", size_hint_x=1, spacing=0)
+        htxt = MDBoxLayout(orientation="vertical", size_hint_x=1, spacing=2)
         htxt.add_widget(MDLabel(text="智慧职教 · 学习助手", theme_text_color="Custom",
                                 text_color=[1, 1, 1, 1], font_style="H6",
-                                size_hint_y=None, height=26))
+                                size_hint_y=None, height=36))
         htxt.add_widget(MDLabel(text="登录 · 刷课 · 答题 · 签到", theme_text_color="Custom",
-                                text_color=[0.88, 0.93, 1, 1],
-                                size_hint_y=None, height=20))
+                                text_color=[0.88, 0.93, 1, 1], font_style="Caption",
+                                size_hint_y=None, height=22))
         hrow.add_widget(htxt)
         head.add_widget(hrow)
         root.add_widget(head)
@@ -287,6 +289,9 @@ class LoginScreen(MDScreen):
         scroll = ScrollView()
         box = BoxLayout(orientation="vertical", padding=18, spacing=14, size_hint_y=None)
         box.bind(minimum_height=box.setter("height"))
+        # 顶部弹性留白：2K 长屏上内容只占上部 1/4，上下等分留白让内容垂直居中
+        self._top_pad = MDBoxLayout(size_hint_y=None, height=0)
+        box.add_widget(self._top_pad)
 
         # —— 已保存账号（一键登录，最常用，放最上面）——
         box.add_widget(section_label("已保存账号 · 点一下即登录"))
@@ -342,13 +347,51 @@ class LoginScreen(MDScreen):
                               size_hint_y=None, height=36)
         box.add_widget(self.status)
 
-        # 页脚：版本 + 使用提示（避免底部大片空白显得空旷）
-        box.add_widget(MDLabel(text="v1.3 · 智慧职教工具　|　仅供学习辅助",
-                               theme_text_color="Custom",
-                               text_color=[0.72, 0.75, 0.80, 1], halign="center",
-                               size_hint_y=None, height=40))
+        # 功能亮点（长屏上填充空白，同时说明 App 能做什么）
+        feat = make_card(spacing=10, padding=(16, 16, 16, 16))
+        feat.add_widget(MDLabel(text="支持功能", theme_text_color="Custom",
+                                text_color=TEXT_SUB, font_style="Caption",
+                                size_hint_y=None, height=22))
+        prow = MDBoxLayout(orientation="horizontal", size_hint_y=None,
+                           height=44, spacing=8)
+        for name in ["一键刷课", "自动答题", "签到改签"]:
+            pill = MDBoxLayout(md_bg_color=[0, 0, 0, 0], size_hint=(1, None),
+                               height=44, padding=(0, 11, 0, 11))
+            _round_bg(pill, color=[0.906, 0.937, 0.988, 1],
+                      radius=[12, 12, 12, 12])
+            pill.add_widget(MDLabel(text=name, theme_text_color="Custom",
+                                    text_color=PRIMARY_DARK, font_style="Caption",
+                                    halign="center"))
+            prow.add_widget(pill)
+        feat.add_widget(prow)
+        box.add_widget(feat)
+
+        # 底部等分留白（与顶部配对 → 内容垂直居中）
+        self._bot_pad = MDBoxLayout(size_hint_y=None, height=0)
+        box.add_widget(self._bot_pad)
+
         scroll.add_widget(box)
         root.add_widget(scroll)
+
+        # 垂直居中：上下留白各取 (视口 - 内容高) 的一半
+        def _recenter(*_):
+            base = (box.minimum_height - self._top_pad.height
+                    - self._bot_pad.height)
+            extra = max(0.0, scroll.height - base)
+            half = round(extra * 0.5)
+            if abs(half - self._top_pad.height) > 1:
+                self._top_pad.height = half
+                self._bot_pad.height = half
+
+        box.bind(minimum_height=_recenter)
+        scroll.bind(height=_recenter)
+
+        # 页脚固定在屏幕底部（放 ScrollView 外，长屏不会留大片空白）
+        footer = MDLabel(text="v1.3 · 智慧职教工具　|　仅供学习辅助",
+                         theme_text_color="Custom",
+                         text_color=[0.72, 0.75, 0.80, 1], halign="center",
+                         size_hint_y=None, height=44)
+        root.add_widget(footer)
         self.add_widget(root)
 
     def on_pre_enter(self):
@@ -925,26 +968,29 @@ class ICVEApp(MDApp):
         try:
             from android import mActivity
             from jnius import autoclass
-            View = autoclass("android.view.View")
-            LP = autoclass("android.view.WindowManager$LayoutParams")
-            Color = autoclass("android.graphics.Color")
+
+            # 用数值常量，不依赖 autoclass 找内嵌类（WindowManager$LayoutParams
+            # 查找失败会被静默吞掉，导致"改了代码但状态栏还是不出来"）
+            FLAG_FULLSCREEN = 1024                    # 0x00000400
+            FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS = -2147483648  # 0x80000000 (Java int)
+            LIGHT_STATUS_BAR = 8192                   # 0x00002000
 
             def _apply():
                 try:
                     window = mActivity.getWindow()
-                    window.clearFlags(LP.FLAG_FULLSCREEN)
-                    window.addFlags(LP.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
-                    window.getDecorView().setSystemUiVisibility(
-                        View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR)
+                    window.clearFlags(FLAG_FULLSCREEN)          # 退出全屏
+                    window.addFlags(FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+                    window.getDecorView().setSystemUiVisibility(LIGHT_STATUS_BAR)
+                    Color = autoclass("android.graphics.Color")
                     window.setStatusBarColor(Color.parseColor("#EEF1F6"))
-                except Exception:
-                    pass
+                except Exception as e:
+                    # 打到 logcat / 崩溃日志，便于定位（不再静默）
+                    print("statusbar setup failed:", e)
 
             # 视图操作必须在 UI 主线程执行
             mActivity.runOnUiThread(_apply)
-        except Exception:
-            # 静默失败：状态栏设置失败不影响 App 正常运行
-            pass
+        except Exception as e:
+            print("statusbar setup failed(outer):", e)
 
     def goto(self, name):
         self.sidebar.refresh()
