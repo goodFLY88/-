@@ -107,7 +107,7 @@ def _patch_pil_rectangle():
 
 _patch_pil_rectangle()
 
-APP_VERSION = "v1.3.5"
+APP_VERSION = "v1.3.6"
 
 
 def _append_diag(text):
@@ -296,6 +296,12 @@ class LoginScreen(MDScreen):
         self.app = app
         root = MDBoxLayout(orientation="vertical", md_bg_color=BG)
 
+        # 状态栏占位条：高度由系统 inset 决定（初始 0），蓝底与标题栏连成
+        # 一体，避免 inset 补偿后顶部露出一条突兀的浅灰空带。
+        self.status_strip = MDBoxLayout(size_hint_y=None, height=0,
+                                        md_bg_color=PRIMARY)
+        root.add_widget(self.status_strip)
+
         # 顶部 LOGO 区（左图标 + 右两行文字）
         # 两个坑（真机 2K 屏实测）：
         # 1) MDIcon 在 __init__ 里强制 size_hint=(None,None)、size=texture_size，
@@ -306,10 +312,10 @@ class LoginScreen(MDScreen):
         # MDIcon 在 __init__ 里 size=texture_size（此时还是 0），
         # adaptive_height 会在那一刻把 hrow/head 算成 0（只剩 padding），
         # 真机表现为蓝条被压到 ~30px、副标题溢出到蓝条外与标题重叠。
-        head = MDBoxLayout(orientation="vertical", size_hint_y=None, height=dp(100),
+        head = MDBoxLayout(orientation="vertical", size_hint_y=None, height=dp(108),
                            md_bg_color=PRIMARY, padding=(dp(20), dp(18), dp(20), dp(18)))
         from kivymd.uix.label import MDIcon
-        hrow = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(64),
+        hrow = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=dp(72),
                            spacing=dp(14))
         logo = MDIcon(icon="school", theme_text_color="Custom",
                       text_color=[1, 1, 1, 1], size_hint=(None, None),
@@ -317,12 +323,16 @@ class LoginScreen(MDScreen):
         hrow.add_widget(logo)
         # 用**单个** MDLabel + markup 做两行标题：一个控件不可能出现
         # 两行互相叠压（两 label 方案在真机上反复叠字，见 11-05 截图）。
+        # 注意：markup 的 [size=n] 也是**像素**，必须传 dp 后的值，
+        # 否则在 density 3.75 的真机上副标题只有 13px（截图里几乎看不见）。
+        _sub_px = int(dp(15))
         htxt = MDLabel(
             text=("智慧职教 · 学习助手\n"
-                  "[color=#e6edff][size=13]登录 · 刷课 · 答题 · 签到[/size][/color]"),
+                  f"[color=#dbe6ff][size={_sub_px}]"
+                  "登录 · 刷课 · 答题 · 签到[/size][/color]"),
             markup=True, theme_text_color="Custom", text_color=[1, 1, 1, 1],
             font_style="H6", halign="left", valign="middle",
-            size_hint=(1, None), height=dp(64))
+            size_hint=(1, None), height=dp(72))
         htxt.bind(width=lambda w, x: setattr(w, "text_size", (x, w.height)))
         hrow.add_widget(htxt)
         head.add_widget(hrow)
@@ -1068,6 +1078,10 @@ class ICVEApp(MDApp):
             pad_dp = top_px / Metrics.density
             for name, s in self.screens.items():
                 try:
+                    # 登录页顶部用蓝色占位条（与标题栏无缝衔接）
+                    if name == "login" and hasattr(s, "status_strip"):
+                        s.status_strip.height = top_px
+                        continue
                     root = s.children[0]
                     p = list(root.padding)
                     # padding 单位是像素，直接加 inset 的像素值
@@ -1140,16 +1154,17 @@ class ICVEApp(MDApp):
             # 查找失败会被静默吞掉，导致"改了代码但状态栏还是不出来"）
             FLAG_FULLSCREEN = 1024                    # 0x00000400
             FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS = -2147483648  # 0x80000000 (Java int)
-            LIGHT_STATUS_BAR = 8192                   # 0x00002000
 
             def _apply():
                 try:
                     window = mActivity.getWindow()
                     window.clearFlags(FLAG_FULLSCREEN)          # 退出全屏
                     window.addFlags(FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
-                    window.getDecorView().setSystemUiVisibility(LIGHT_STATUS_BAR)
+                    # 状态栏底色取主蓝、图标用白色（清掉 LIGHT_STATUS_BAR），
+                    # 与页面顶部蓝色标题栏/占位条无缝衔接
+                    window.getDecorView().setSystemUiVisibility(0)
                     Color = autoclass("android.graphics.Color")
-                    window.setStatusBarColor(Color.parseColor("#EEF1F6"))
+                    window.setStatusBarColor(Color.parseColor("#3B82F6"))
                     # Android 11+ 再用 WindowInsetsController 主动 show 一次
                     shown = "no-controller"
                     try:
