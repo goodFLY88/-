@@ -107,7 +107,7 @@ def _patch_pil_rectangle():
 
 _patch_pil_rectangle()
 
-APP_VERSION = "v1.3.6"
+APP_VERSION = "v1.3.7"
 
 
 def _append_diag(text):
@@ -887,11 +887,16 @@ class CourseSelectScreen(MDScreen):
         threading.Thread(target=work, daemon=True).start()
 
     def _show_sign_dialog(self, items, cid, ciid, coid):
-        layout = BoxLayout(orientation="vertical", spacing=dp(2), size_hint_y=None)
-        layout.bind(minimum_height=layout.setter("height"))
-        layout.add_widget(MDLabel(text="选择签到记录（括号内为当前状态）：",
-                                  theme_text_color="Secondary", size_hint_y=None, height=dp(35)))
-        self._sign_ctx = (cid, ciid, coid)
+        """签到记录选择弹窗（可滚动）。
+
+        MDDialog 的 content_cls 不会自动滚动：条目一多（一次十几条）就会
+        顶出屏幕且无法滑动（真机截图实测）。这里套一层固定高度 ScrollView，
+        高度取 min(460dp, 屏高 55%)，并加"关闭"按钮便于退出。
+        """
+        from kivy.core.window import Window
+
+        inner = BoxLayout(orientation="vertical", spacing=dp(2), size_hint_y=None)
+        inner.bind(minimum_height=inner.setter("height"))
         for s in items:
             st = str(s.get("myStatus", "0"))
             st_label = SIGN_STATUS_MAP.get(st, st)
@@ -900,8 +905,24 @@ class CourseSelectScreen(MDScreen):
                 secondary_text=f"当前状态：{st_label}  —— 点击改签",
             )
             item.bind(on_release=lambda x, sig=s: self._pick_sign_status(sig))
-            layout.add_widget(item)
-        self._dialog = MDDialog(title="自定义改签", type="custom", content_cls=layout)
+            inner.add_widget(item)
+
+        scroll = ScrollView(size_hint=(1, None), do_scroll_x=False,
+                            height=min(dp(460), Window.height * 0.55))
+        scroll.add_widget(inner)
+
+        wrap = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(4))
+        wrap.bind(minimum_height=wrap.setter("height"))
+        wrap.add_widget(MDLabel(text=f"共 {len(items)} 条 · 上下滑动选择",
+                                theme_text_color="Secondary",
+                                size_hint_y=None, height=dp(26)))
+        wrap.add_widget(scroll)
+
+        self._sign_ctx = (cid, ciid, coid)
+        close_btn = MDFlatButton(text="关闭")
+        self._dialog = MDDialog(title="自定义改签", type="custom",
+                                content_cls=wrap, buttons=[close_btn])
+        close_btn.bind(on_release=lambda *_: self._dialog.dismiss())
         self._dialog.open()
 
     def _pick_sign_status(self, sign):
