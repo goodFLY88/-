@@ -106,7 +106,7 @@ def _patch_pil_rectangle():
 
 _patch_pil_rectangle()
 
-APP_VERSION = "v1.3.3"
+APP_VERSION = "v1.3.4"
 
 
 def _append_diag(text):
@@ -305,26 +305,31 @@ class LoginScreen(MDScreen):
         # MDIcon 在 __init__ 里 size=texture_size（此时还是 0），
         # adaptive_height 会在那一刻把 hrow/head 算成 0（只剩 padding），
         # 真机表现为蓝条被压到 ~30px、副标题溢出到蓝条外与标题重叠。
-        head = MDBoxLayout(orientation="vertical", size_hint_y=None, height=96,
+        head = MDBoxLayout(orientation="vertical", size_hint_y=None, height=100,
                            md_bg_color=PRIMARY, padding=(20, 18, 20, 18))
         from kivymd.uix.label import MDIcon
-        hrow = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=60,
+        hrow = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=64,
                            spacing=14)
         logo = MDIcon(icon="school", theme_text_color="Custom",
                       text_color=[1, 1, 1, 1], size_hint=(None, None),
                       size=(44, 44), pos_hint={"center_y": 0.5})
         hrow.add_widget(logo)
-        htxt = MDBoxLayout(orientation="vertical", size_hint_x=1, spacing=2,
-                           height=60)
-        htxt.add_widget(MDLabel(text="智慧职教 · 学习助手", theme_text_color="Custom",
-                                text_color=[1, 1, 1, 1], font_style="H6",
-                                size_hint_y=None, height=36))
-        htxt.add_widget(MDLabel(text="登录 · 刷课 · 答题 · 签到", theme_text_color="Custom",
-                                text_color=[0.88, 0.93, 1, 1], font_style="Caption",
-                                size_hint_y=None, height=22))
+        # 用**单个** MDLabel + markup 做两行标题：一个控件不可能出现
+        # 两行互相叠压（两 label 方案在真机上反复叠字，见 11-05 截图）。
+        htxt = MDLabel(
+            text=("智慧职教 · 学习助手\n"
+                  "[color=#e6edff][size=13]登录 · 刷课 · 答题 · 签到[/size][/color]"),
+            markup=True, theme_text_color="Custom", text_color=[1, 1, 1, 1],
+            font_style="H6", halign="left", valign="middle",
+            size_hint=(1, None), height=64)
+        htxt.bind(width=lambda w, x: setattr(w, "text_size", (x, w.height)))
         hrow.add_widget(htxt)
         head.add_widget(hrow)
         root.add_widget(head)
+        # 供运行时几何自检（真机布局问题靠日志定位，不靠肉眼估）
+        self.head = head
+        self.hrow = hrow
+        self.htxt = htxt
 
         scroll = ScrollView()
         box = BoxLayout(orientation="vertical", padding=18, spacing=14, size_hint_y=None)
@@ -1033,6 +1038,76 @@ class ICVEApp(MDApp):
         # 多次重试：首次可能在窗口 attach 之前，状态栏 flag 会被覆盖
         for delay in (1.0, 3.0, 6.0):
             Clock.schedule_once(lambda dt: self._set_status_bar_color(), delay)
+        # 状态栏显示后若压住内容（inset>0），给各页面顶部补内边距
+        Clock.schedule_once(lambda dt: self._apply_status_bar_inset(), 1.6)
+        # 运行时几何自检：把头部实际高度/文字坐标写进日志
+        Clock.schedule_once(lambda dt: self._log_geometry(), 2.8)
+
+    def _apply_status_bar_inset(self):
+        """系统状态栏若覆盖在内容之上（inset top > 0），把内容整体下移。
+
+        getRootWindowInsets().getSystemWindowInsetTop() 返回"本窗口还需要多少
+        顶部内边距"：若窗口已排在状态栏之下则为 0，若窗口延伸到状态栏后面
+        则是状态栏高度。据此补 padding，避免标题被状态栏压住。
+        """
+        if getattr(self, "_inset_applied", False):
+            return
+        try:
+            from android import mActivity
+            from kivy.metrics import Metrics
+            dv = mActivity.getWindow().getDecorView()
+            ins = dv.getRootWindowInsets()
+            if ins is None:
+                return
+            top_px = ins.getSystemWindowInsetTop()
+            if not top_px or top_px <= 0:
+                _append_diag("[inset] top=0 (窗口已在状态栏之下，无需补偿)")
+                self._inset_applied = True
+                return
+            pad_dp = top_px / Metrics.density
+            for name, s in self.screens.items():
+                try:
+                    root = s.children[0]
+                    p = list(root.padding)
+                    root.padding = [p[0], p[1] + pad_dp, p[2], p[3]]
+                except Exception:
+                    pass
+            self._inset_applied = True
+            _append_diag(f"[inset] 补顶部内边距 {pad_dp:.1f}dp (top={top_px}px)")
+        except Exception as e:
+            _append_diag(f"[inset] 读取失败: {e}")
+
+    def _log_geometry(self):
+        """把关键控件实几何写进 icve_crash.log（真机布局问题靠数据定位）。"""
+        lines = []
+        try:
+            from kivy.core.window import Window
+            from kivy.metrics import Metrics
+            lg = self.login
+            lines.append(f"[geom] window={tuple(Window.size)} "
+                         f"density={Metrics.density:.2f}")
+            for nm in ("head", "hrow", "htxt"):
+                w = getattr(lg, nm, None)
+                if w is None:
+                    continue
+                lines.append(f"[geom] {nm}: y={w.y:.0f} h={w.height:.0f} "
+                             f"x={w.x:.0f} w={w.width:.0f} "
+                             f"tex={getattr(w, 'texture_size', None)}")
+        except Exception as e:
+            lines.append(f"[geom] fail: {e}")
+        try:
+            from android import mActivity
+            dv = mActivity.getWindow().getDecorView()
+            lines.append(f"[geom] decorUi={dv.getSystemUiVisibility()}")
+            ins = dv.getRootWindowInsets()
+            if ins is not None:
+                lines.append(f"[geom] inset top={ins.getSystemWindowInsetTop()} "
+                             f"bottom={ins.getSystemWindowInsetBottom()}")
+        except Exception as e:
+            lines.append(f"[geom] inset fail: {e}")
+        for ln in lines:
+            print(ln)
+        _append_diag("\n".join(lines))
 
     def on_resume(self):
         Clock.schedule_once(lambda dt: self._set_status_bar_color(), 0.3)
