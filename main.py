@@ -106,7 +106,7 @@ def _patch_pil_rectangle():
 
 _patch_pil_rectangle()
 
-APP_VERSION = "v1.3.2"
+APP_VERSION = "v1.3.3"
 
 
 def _append_diag(text):
@@ -301,18 +301,21 @@ class LoginScreen(MDScreen):
         #    写 size_hint=(1,None), height=64 会被覆盖 → 图标缩成小点；
         # 2) 中文字体 H6(24sp) 实际行高 > 26dp，固定 26 会让标题溢出压住副标题
         #    （截图里两行文字叠在一起）。标题给 36dp、副标题 22dp。
-        head = MDBoxLayout(orientation="vertical", size_hint_y=None,
-                           md_bg_color=PRIMARY, padding=(20, 18, 20, 18),
-                           adaptive_height=True)
+        # 注意：这里必须用**固定高度**，不能用 adaptive_height。
+        # MDIcon 在 __init__ 里 size=texture_size（此时还是 0），
+        # adaptive_height 会在那一刻把 hrow/head 算成 0（只剩 padding），
+        # 真机表现为蓝条被压到 ~30px、副标题溢出到蓝条外与标题重叠。
+        head = MDBoxLayout(orientation="vertical", size_hint_y=None, height=96,
+                           md_bg_color=PRIMARY, padding=(20, 18, 20, 18))
         from kivymd.uix.label import MDIcon
-        hrow = MDBoxLayout(orientation="horizontal", size_hint_y=None,
-                           spacing=14, adaptive_height=True)
+        hrow = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=60,
+                           spacing=14)
         logo = MDIcon(icon="school", theme_text_color="Custom",
                       text_color=[1, 1, 1, 1], size_hint=(None, None),
                       size=(44, 44), pos_hint={"center_y": 0.5})
         hrow.add_widget(logo)
         htxt = MDBoxLayout(orientation="vertical", size_hint_x=1, spacing=2,
-                           adaptive_height=True)
+                           height=60)
         htxt.add_widget(MDLabel(text="智慧职教 · 学习助手", theme_text_color="Custom",
                                 text_color=[1, 1, 1, 1], font_style="H6",
                                 size_hint_y=None, height=36))
@@ -1027,7 +1030,9 @@ class ICVEApp(MDApp):
         _append_diag("\n".join(diag))
 
     def on_start(self):
-        Clock.schedule_once(lambda dt: self._set_status_bar_color(), 1.0)
+        # 多次重试：首次可能在窗口 attach 之前，状态栏 flag 会被覆盖
+        for delay in (1.0, 3.0, 6.0):
+            Clock.schedule_once(lambda dt: self._set_status_bar_color(), delay)
 
     def on_resume(self):
         Clock.schedule_once(lambda dt: self._set_status_bar_color(), 0.3)
@@ -1068,7 +1073,19 @@ class ICVEApp(MDApp):
                     window.getDecorView().setSystemUiVisibility(LIGHT_STATUS_BAR)
                     Color = autoclass("android.graphics.Color")
                     window.setStatusBarColor(Color.parseColor("#EEF1F6"))
+                    # Android 11+ 再用 WindowInsetsController 主动 show 一次
+                    shown = "no-controller"
+                    try:
+                        InsetsType = autoclass("android.view.WindowInsets$Type")
+                        ctrl = window.getInsetsController()
+                        if ctrl is not None:
+                            ctrl.show(InsetsType.statusBars())
+                            shown = "insets-show"
+                    except Exception as e:
+                        shown = f"insets-skip: {e}"
+                    _append_diag(f"[statusbar] applied ({shown})")
                 except Exception as e:
+                    _append_diag(f"[statusbar] failed: {e}")
                     # 打到 logcat / 崩溃日志，便于定位（不再静默）
                     print("statusbar setup failed:", e)
 
