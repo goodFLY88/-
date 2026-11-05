@@ -266,16 +266,18 @@ class LoginScreen(MDScreen):
         #    写 size_hint=(1,None), height=64 会被覆盖 → 图标缩成小点；
         # 2) 中文字体 H6(24sp) 实际行高 > 26dp，固定 26 会让标题溢出压住副标题
         #    （截图里两行文字叠在一起）。标题给 36dp、副标题 22dp。
-        head = MDBoxLayout(orientation="vertical", size_hint_y=None, height=96,
-                           md_bg_color=PRIMARY, padding=(20, 18, 20, 18))
+        head = MDBoxLayout(orientation="vertical", size_hint_y=None,
+                           md_bg_color=PRIMARY, padding=(20, 18, 20, 18),
+                           adaptive_height=True)
         from kivymd.uix.label import MDIcon
-        hrow = MDBoxLayout(orientation="horizontal", size_hint_y=None, height=60,
-                           spacing=14)
+        hrow = MDBoxLayout(orientation="horizontal", size_hint_y=None,
+                           spacing=14, adaptive_height=True)
         logo = MDIcon(icon="school", theme_text_color="Custom",
                       text_color=[1, 1, 1, 1], size_hint=(None, None),
                       size=(44, 44), pos_hint={"center_y": 0.5})
         hrow.add_widget(logo)
-        htxt = MDBoxLayout(orientation="vertical", size_hint_x=1, spacing=2)
+        htxt = MDBoxLayout(orientation="vertical", size_hint_x=1, spacing=2,
+                           adaptive_height=True)
         htxt.add_widget(MDLabel(text="智慧职教 · 学习助手", theme_text_color="Custom",
                                 text_color=[1, 1, 1, 1], font_style="H6",
                                 size_hint_y=None, height=36))
@@ -911,6 +913,10 @@ class ICVEApp(MDApp):
             Window.fullscreen = False
         except Exception:
             pass
+        # 安卓上 Kivy 可能把 density 估小（2K 屏实际 3.5 估成 1.5），
+        # 导致所有 dp 尺寸等比缩水：字体变小、标题被压扁、整页"内容很小"。
+        # 用系统 DisplayMetrics.density 覆盖（真机截图实测）。
+        self._fix_android_density()
         # 中文字体替换：只改文本样式，跳过 "Icon" —— 它是 MDIcon 的图标
         # 字体（materialdesignicons），改成 NotoSansSC 会导致图标渲染成
         # 方框占位符（真机实测：登录页 school 图标、侧边栏图标全变成叉）
@@ -940,6 +946,27 @@ class ICVEApp(MDApp):
                         "sign": self.sign}
         sm.current = "login"
         return self.nav_layout
+
+    def _fix_android_density(self):
+        """用安卓真实 density 覆盖 Kivy 的估算值（真机 2K 屏实测偏差）。
+
+        Kivy 在部分安卓机型上把 density 估成 ~1.5（实际 ~3.5），
+        所有 dp 尺寸等比缩水 → 字体小、标题挤成一团、整页留白过大。
+        这里读 DisplayMetrics.density（densityDpi/160）校正，
+        并在 logcat 打出前后对比，便于后续排查。
+        """
+        try:
+            from android import mActivity
+            from kivy.metrics import Metrics
+            dm = mActivity.getResources().getDisplayMetrics()
+            real = float(dm.density)
+            print(f"[density] kivy={Metrics.density:.2f} android={real:.2f} "
+                  f"dpi={dm.densityDpi} px={dm.widthPixels}x{dm.heightPixels}")
+            if real > 0 and abs(real - Metrics.density) > 0.05:
+                Metrics.density = real
+                print(f"[density] corrected -> {Metrics.density:.2f}")
+        except Exception as e:
+            print("[density] skip:", e)
 
     def on_start(self):
         Clock.schedule_once(lambda dt: self._set_status_bar_color(), 1.0)
