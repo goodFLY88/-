@@ -25,3 +25,4 @@ Thumbs.db
 # 题库等可选数据(体积大,按需自行放入)
 题库/
 *.tar.gz
+icve_crash.log

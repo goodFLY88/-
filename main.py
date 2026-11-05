@@ -983,19 +983,26 @@ class ICVEApp(MDApp):
         return self.nav_layout
 
     def _fix_android_density(self):
-        """用安卓真实 density 覆盖 Kivy 的估算值（真机 2K 屏实测偏差）。
+        """校正 density，让 UI 比例与设计稿（411dp 宽）一致。
 
-        Kivy 在部分安卓机型上把 density 估成 ~1.5（实际 ~3.5），
-        所有 dp 尺寸等比缩水 → 字体小、标题挤成一团、整页留白过大。
-        这里读 DisplayMetrics.density（densityDpi/160）校正，
-        并把诊断写进 icve_crash.log（print 在真机上不容易看到）。
+        真机 2K 屏实测：Kivy 的 density 可能远小于实际，所有 dp 尺寸等比
+        缩水 → 字体小、标题挤成一团。这里双保险：
+          1) 读 DisplayMetrics.density（densityDpi/160）作为参考；
+          2) 用 Window 实际像素宽 / 411 反推 density —— 保证内容铺满屏宽，
+             不依赖厂商上报值（部分 ROM/兼容模式会上报错）。
+        诊断同时写入 icve_crash.log（print 在真机不易看到）。
         """
+        DESIGN_DP_WIDTH = 411.0
         diag = [f"[boot] version={APP_VERSION}"]
         try:
             from kivy.core.window import Window
             from kivy.metrics import Metrics
+            bounds = 1.0 <= Window.width / DESIGN_DP_WIDTH <= 5.0
+            derived = round(Window.width / DESIGN_DP_WIDTH, 2) if bounds else None
             diag.append(f"[boot] kivy density={Metrics.density:.2f} "
-                        f"window={tuple(Window.size)}")
+                        f"window={tuple(Window.size)} derived={derived}")
+
+            real = None
             try:
                 from android import mActivity
                 dm = mActivity.getResources().getDisplayMetrics()
@@ -1003,11 +1010,16 @@ class ICVEApp(MDApp):
                 diag.append(f"[boot] android density={real:.2f} "
                             f"dpi={dm.densityDpi} "
                             f"px={dm.widthPixels}x{dm.heightPixels}")
-                if real > 0 and abs(real - Metrics.density) > 0.05:
-                    Metrics.density = real
-                    diag.append(f"[boot] density corrected -> {Metrics.density:.2f}")
             except Exception as e:
                 diag.append(f"[boot] android metrics unavailable: {e}")
+
+            # 以安卓上报值为主（Kivy 走 SDL 读 DPI 常常偏小），
+            # 反推值仅写进诊断：等确认 Window.size 是像素还是 dp 后再启用，
+            # 否则可能把 density 反推成 1.0 把 UI 缩得更小。
+            target = real if real else derived
+            if target and abs(target - Metrics.density) > 0.05:
+                Metrics.density = target
+                diag.append(f"[boot] density corrected -> {Metrics.density:.2f}")
         except Exception as e:
             diag.append(f"[boot] density probe failed: {e}")
         for line in diag:
