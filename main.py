@@ -107,7 +107,7 @@ def _patch_pil_rectangle():
 
 _patch_pil_rectangle()
 
-APP_VERSION = "v1.3.7"
+APP_VERSION = "v1.3.8"
 
 
 def _append_diag(text):
@@ -887,13 +887,14 @@ class CourseSelectScreen(MDScreen):
         threading.Thread(target=work, daemon=True).start()
 
     def _show_sign_dialog(self, items, cid, ciid, coid):
-        """签到记录选择弹窗（可滚动）。
+        """签到记录选择弹窗（可滚动，尺寸自控）。
 
-        MDDialog 的 content_cls 不会自动滚动：条目一多（一次十几条）就会
-        顶出屏幕且无法滑动（真机截图实测）。这里套一层固定高度 ScrollView，
-        高度取 min(460dp, 屏高 55%)，并加"关闭"按钮便于退出。
+        为什么不用 MDDialog：它按 content_cls 的高度自动撑开，条目一多就
+        比屏幕还高，顶部提示和底部按钮被挤出屏幕、内容也无法滑动
+        （真机截图实测：上下都溢出）。改用固定尺寸的 ModalView，
+        内部的 ScrollView 用弹性高度占满剩余空间，滚动必然生效。
         """
-        from kivy.core.window import Window
+        from kivy.uix.modalview import ModalView
 
         inner = BoxLayout(orientation="vertical", spacing=dp(2), size_hint_y=None)
         inner.bind(minimum_height=inner.setter("height"))
@@ -907,23 +908,32 @@ class CourseSelectScreen(MDScreen):
             item.bind(on_release=lambda x, sig=s: self._pick_sign_status(sig))
             inner.add_widget(item)
 
-        scroll = ScrollView(size_hint=(1, None), do_scroll_x=False,
-                            height=min(dp(460), Window.height * 0.55))
+        scroll = ScrollView(do_scroll_x=False, bar_width=dp(3))
         scroll.add_widget(inner)
 
-        wrap = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(4))
-        wrap.bind(minimum_height=wrap.setter("height"))
-        wrap.add_widget(MDLabel(text=f"共 {len(items)} 条 · 上下滑动选择",
-                                theme_text_color="Secondary",
-                                size_hint_y=None, height=dp(26)))
-        wrap.add_widget(scroll)
+        card = MDCard(orientation="vertical", padding=dp(16), spacing=dp(8),
+                      radius=CARD_RADIUS, md_bg_color=CARD_BG, elevation=0,
+                      size_hint=(1, 1))
+        card.add_widget(MDLabel(text="自定义改签", font_style="H6",
+                                theme_text_color="Custom", text_color=TEXT_MAIN,
+                                size_hint_y=None, height=dp(34)))
+        card.add_widget(MDLabel(
+            text=f"{APP_VERSION} · 共 {len(items)} 条 · 上下滑动选择",
+            theme_text_color="Custom", text_color=TEXT_SUB,
+            size_hint_y=None, height=dp(24)))
+        card.add_widget(scroll)                      # 弹性：占满剩余高度
+        close_btn = primary_button("关闭", height=dp(46), bg=SEPARATOR)
+        close_btn.text_color = TEXT_MAIN
+        card.add_widget(close_btn)
+
+        view = ModalView(size_hint=(0.92, 0.78), auto_dismiss=True,
+                         background="", background_color=(0, 0, 0, 0.45))
+        view.add_widget(card)
+        close_btn.bind(on_release=lambda *_: view.dismiss())
 
         self._sign_ctx = (cid, ciid, coid)
-        close_btn = MDFlatButton(text="关闭")
-        self._dialog = MDDialog(title="自定义改签", type="custom",
-                                content_cls=wrap, buttons=[close_btn])
-        close_btn.bind(on_release=lambda *_: self._dialog.dismiss())
-        self._dialog.open()
+        self._dialog = view
+        view.open()
 
     def _pick_sign_status(self, sign):
         if getattr(self, "_dialog", None): self._dialog.dismiss()
