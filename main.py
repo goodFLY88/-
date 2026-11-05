@@ -55,12 +55,15 @@ LabelBase.register(name="Roboto",
 def _patch_pil_rectangle():
     """兼容 kivymd 1.0.2 阴影绘制的负坐标 bug（治本）。
 
-    kivymd 1.0.2 的 elevation.py __draw_shadow__ 在按钮 radius 超过
-    半宽时算出 x1 < x0 的矩形，2024+ 的 Pillow 对 ImageDraw.rectangle
-    严格校验，直接 ValueError（真机实测：MDRaisedButton 半径变化 →
-    阴影重绘 → 崩溃）。kivymd 1.2.0 重构阴影系统才修掉，但我们锁
-    1.0.2（1.1.1/1.2.0 无 wheel 装不上），只能在这里把负坐标 clamp
-    回合法值——阴影照样画，只是极少数越界场景少画一个像素。
+    kivymd 1.0.2 的 elevation.py __draw_shadow__ 在按钮 radius 超过半宽时
+    算出 x1 < x0 的矩形，2024+ 的 Pillow 严格校验后直接
+    ValueError: x1 must be greater than or equal to x0。
+
+    重要：kivymd 传的是**两点式**坐标 [(x0, y0), (x1, y1)]，
+    早期补丁只认 4 元素扁平式（len(xy)==4），判断失败后直接 raise，
+    等于补丁从未生效——真机日志每帧刷这个 ValueError，Clock 里抛异常
+    会把布局卡在半途（表现为头部被压扁、控件尺寸不对）。这里两种
+    写法都归一化，并且兜底绝不向外抛。
     """
     try:
         from PIL import ImageDraw
@@ -68,21 +71,53 @@ def _patch_pil_rectangle():
         return
     _orig = ImageDraw.ImageDraw.rectangle
 
+    def _norm(xy):
+        """归一化为两点式并保证 x1>=x0, y1>=y0（int 化，避免截断反转）。"""
+        if not isinstance(xy, (list, tuple)):
+            return None
+        try:
+            if len(xy) == 4 and not isinstance(xy[0], (list, tuple)):
+                x0, y0, x1, y1 = xy
+            elif len(xy) >= 2 and isinstance(xy[0], (list, tuple)):
+                (x0, y0), (x1, y1) = xy[0], xy[1]
+            else:
+                return None
+            x0, y0, x1, y1 = int(x0), int(y0), int(x1), int(y1)
+            return [(x0, y0), (max(x1, x0), max(y1, y0))]
+        except Exception:
+            return None
+
     def _safe_rectangle(self, xy, *args, **kwargs):
         try:
             return _orig(self, xy, *args, **kwargs)
         except ValueError:
-            if not (isinstance(xy, (list, tuple)) and len(xy) == 4):
-                raise
-            x0, y0, x1, y1 = xy
-            x1 = max(x1, x0)
-            y1 = max(y1, y0)
-            return _orig(self, [x0, y0, x1, y1], *args, **kwargs)
+            pass
+        except Exception:
+            return None
+        fixed = _norm(xy)
+        try:
+            return _orig(self, fixed if fixed else [(0, 0), (0, 0)],
+                         *args, **kwargs)
+        except Exception:
+            return None
 
     ImageDraw.ImageDraw.rectangle = _safe_rectangle
 
 
 _patch_pil_rectangle()
+
+APP_VERSION = "v1.3.2"
+
+
+def _append_diag(text):
+    """把诊断行追加到崩溃日志（/sdcard 优先，失败退回当前目录）。"""
+    for p in ("/sdcard/icve_crash.log", "icve_crash.log"):
+        try:
+            with open(p, "a", encoding="utf-8") as f:
+                f.write(text + "\n")
+            return
+        except Exception:
+            continue
 
 # ==================== 统一视觉规范（Galaxy 现代风格） ====================
 # 主色（现代蓝）
@@ -389,7 +424,7 @@ class LoginScreen(MDScreen):
         scroll.bind(height=_recenter)
 
         # 页脚固定在屏幕底部（放 ScrollView 外，长屏不会留大片空白）
-        footer = MDLabel(text="v1.3 · 智慧职教工具　|　仅供学习辅助",
+        footer = MDLabel(text=f"{APP_VERSION} · 智慧职教工具　|　仅供学习辅助",
                          theme_text_color="Custom",
                          text_color=[0.72, 0.75, 0.80, 1], halign="center",
                          size_hint_y=None, height=44)
@@ -953,20 +988,31 @@ class ICVEApp(MDApp):
         Kivy 在部分安卓机型上把 density 估成 ~1.5（实际 ~3.5），
         所有 dp 尺寸等比缩水 → 字体小、标题挤成一团、整页留白过大。
         这里读 DisplayMetrics.density（densityDpi/160）校正，
-        并在 logcat 打出前后对比，便于后续排查。
+        并把诊断写进 icve_crash.log（print 在真机上不容易看到）。
         """
+        diag = [f"[boot] version={APP_VERSION}"]
         try:
-            from android import mActivity
+            from kivy.core.window import Window
             from kivy.metrics import Metrics
-            dm = mActivity.getResources().getDisplayMetrics()
-            real = float(dm.density)
-            print(f"[density] kivy={Metrics.density:.2f} android={real:.2f} "
-                  f"dpi={dm.densityDpi} px={dm.widthPixels}x{dm.heightPixels}")
-            if real > 0 and abs(real - Metrics.density) > 0.05:
-                Metrics.density = real
-                print(f"[density] corrected -> {Metrics.density:.2f}")
+            diag.append(f"[boot] kivy density={Metrics.density:.2f} "
+                        f"window={tuple(Window.size)}")
+            try:
+                from android import mActivity
+                dm = mActivity.getResources().getDisplayMetrics()
+                real = float(dm.density)
+                diag.append(f"[boot] android density={real:.2f} "
+                            f"dpi={dm.densityDpi} "
+                            f"px={dm.widthPixels}x{dm.heightPixels}")
+                if real > 0 and abs(real - Metrics.density) > 0.05:
+                    Metrics.density = real
+                    diag.append(f"[boot] density corrected -> {Metrics.density:.2f}")
+            except Exception as e:
+                diag.append(f"[boot] android metrics unavailable: {e}")
         except Exception as e:
-            print("[density] skip:", e)
+            diag.append(f"[boot] density probe failed: {e}")
+        for line in diag:
+            print(line)
+        _append_diag("\n".join(diag))
 
     def on_start(self):
         Clock.schedule_once(lambda dt: self._set_status_bar_color(), 1.0)
