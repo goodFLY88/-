@@ -160,12 +160,15 @@ def section_label(text):
 
 
 def _round_bg(w, color=None, radius=None):
-    """给任意容器加圆角底（MDBoxLayout 本身不支持 radius，只能 canvas 画）。"""
+    """给任意容器加圆角底（MDBoxLayout 本身不支持 radius，只能 canvas 画）。
+
+    返回 (Color指令, RoundedRectangle)，调用方可改颜色实现选中态。
+    """
     from kivy.graphics import Color, RoundedRectangle
     color = color or CARD_BG
     radius = radius or CARD_RADIUS
     with w.canvas.before:
-        Color(*color)
+        c = Color(*color)
         rect = RoundedRectangle(pos=w.pos, size=w.size, radius=radius)
 
     def _sync(*_):
@@ -173,7 +176,7 @@ def _round_bg(w, color=None, radius=None):
         rect.size = w.size
 
     w.bind(pos=_sync, size=_sync)
-    return w
+    return c, rect
 
 
 def make_card(**kw):
@@ -228,9 +231,21 @@ class TapRow(MDBoxLayout):
         super().__init__(**kw)
         self.on_tap = on_tap
         self.size_hint_y = None
-        self.height = dp(74)
-        self.padding = (dp(14), dp(8), dp(14), dp(8))
+        self.padding = (dp(14), dp(10), dp(14), dp(10))
         self.spacing = dp(2)
+        # 圆角卡片底（不抢触摸，纯绘制）
+        self._bg_color, self._bg_rect = _round_bg(
+            self, color=CARD_BG, radius=[dp(16), dp(16), dp(16), dp(16)])
+        # 高度随内容自适应（中文字体放大时不挤压）
+        self.bind(minimum_height=self.setter("height"))
+        self.height = dp(72)
+
+    def set_selected(self, flag):
+        """选中态：浅蓝底 + 略深边框感。"""
+        if flag:
+            self._bg_color.rgba = [0.898, 0.933, 0.992, 1]   # #E5EEFD
+        else:
+            self._bg_color.rgba = CARD_BG
 
 
 class TapScrollView(ScrollView):
@@ -254,6 +269,9 @@ class TapScrollView(ScrollView):
         随滚动更新（实测：滚动前后 row[0].y 完全相同）。所以不能直接
         row.collide_point()，否则滑过之后再点就会命中错误的行
         （真机反馈"点击选择的课程不对"）。
+
+        用 row.y - inner.y 求行相对内容底部的偏移：两者都是绝对坐标且
+        不随滚动变化，差值精确，且不依赖行被嵌套了几层容器。
         """
         if not self.tap_rows or not self.children:
             return None
@@ -264,7 +282,8 @@ class TapScrollView(ScrollView):
             offset = 0
         cy = offset + (y - self.y)
         for row in self.tap_rows:
-            if row.x <= x <= row.right and row.y <= cy <= row.top:
+            rel = row.y - inner.y
+            if row.x <= x <= row.right and rel <= cy <= rel + row.height:
                 return row
         return None
 
@@ -821,8 +840,12 @@ class CourseSelectScreen(MDScreen):
         self.list.add_widget(MDLabel(text=subtitle, theme_text_color="Custom",
                                      text_color=TEXT_SUB, size_hint_y=None,
                                      height=dp(40), padding=(dp(16), dp(8))))
-        # 区块：选择课程（课程行直接平铺，点击交给 TapScrollView）
+        # 区块：选择课程（课程行放独立容器，刷新时只清这里，不碰按钮/日志）
         self.list.add_widget(section_label("选择课程"))
+        self.course_box = BoxLayout(orientation="vertical", size_hint_y=None,
+                                    spacing=dp(6), padding=(dp(16), dp(2), dp(16), dp(6)))
+        self.course_box.bind(minimum_height=self.course_box.setter("height"))
+        self.list.add_widget(self.course_box)
 
         # 区块：操作
         self.list.add_widget(section_label("操作"))
@@ -875,11 +898,12 @@ class CourseSelectScreen(MDScreen):
             self.append("!! 请先登录")
             Clock.schedule_once(lambda dt: self.app.goto("login"), 0)
             return
-        self.list.clear_widgets()
+        # 只清课程区！clear_widgets 会连按钮/日志一起清掉（真机踩过）
+        self.course_box.clear_widgets()
         self.course_scroll.tap_rows = []
-        self.list.add_widget(MDLabel(text="加载课程中...", theme_text_color="Custom",
-                                     text_color=TEXT_SUB, size_hint_y=None,
-                                     height=dp(48), padding=(dp(14), dp(12))))
+        self.course_box.add_widget(MDLabel(text="加载课程中...", theme_text_color="Custom",
+                                           text_color=TEXT_SUB, size_hint_y=None,
+                                           height=dp(48), padding=(dp(14), dp(12))))
         def work():
             try:
                 self.courses = self.app.client.get_my_courses() or []
@@ -889,16 +913,17 @@ class CourseSelectScreen(MDScreen):
         threading.Thread(target=work, daemon=True).start()
 
     def show_courses(self):
-        self.list.clear_widgets()
+        self.course_box.clear_widgets()
         self.course_scroll.tap_rows = []
         if not self.courses:
-            self.list.add_widget(MDLabel(text="(未找到课程)", theme_text_color="Custom",
-                                         text_color=TEXT_SUB, size_hint_y=None,
-                                         height=dp(48), padding=(dp(14), dp(12))))
+            self.course_box.add_widget(MDLabel(text="(未找到课程)", theme_text_color="Custom",
+                                               text_color=TEXT_SUB, size_hint_y=None,
+                                               height=dp(48), padding=(dp(14), dp(12))))
             return
         for c in self.courses:
             ctype = c.get('_courseType', '?')
             row = TapRow(on_tap=lambda course=c: self.select_course(course))
+            row._course = c
             row.add_widget(MDLabel(text=c.get('courseName', '?'),
                                    theme_text_color="Custom", text_color=TEXT_MAIN,
                                    size_hint_y=None, height=dp(30)))
@@ -906,8 +931,9 @@ class CourseSelectScreen(MDScreen):
                                    theme_text_color="Custom", text_color=TEXT_SUB,
                                    font_style="Caption",
                                    size_hint_y=None, height=dp(24)))
-            self.list.add_widget(row)
+            self.course_box.add_widget(row)
             self.course_scroll.tap_rows.append(row)
+        Clock.schedule_once(lambda dt: setattr(self.course_scroll, "scroll_y", 1), 0)
 
     def _course_type_label(self, ctype):
         m = {"SPOC": "SPOC · 校内课程", "MOOC": "MOOC · 慕课", "ZYK": "资源库课程"}
@@ -915,7 +941,11 @@ class CourseSelectScreen(MDScreen):
 
     def select_course(self, course):
         self.selected_course = course
-        self.log.text = f"[b][color=2196F3]已选：{course.get('courseName','')}[/color][/b]\n"
+        # 选中高亮：清掉上一行，给当前行浅蓝底（点击有明确视觉反馈）
+        for row in self.course_scroll.tap_rows:
+            row.set_selected(getattr(row, "_course", None) is course)
+        self.log.text = f"[b][color=3B82F6]已选：{course.get('courseName','')}[/color][/b]\n"
+        self.append(f">> 已选课程：{course.get('courseName','')}，请点下方按钮操作")
 
     def append(self, text):
         # 智能配色：错误红、成功/完成绿、进度蓝、其余灰
