@@ -107,7 +107,7 @@ def _patch_pil_rectangle():
 
 _patch_pil_rectangle()
 
-APP_VERSION = "v1.3.10"
+APP_VERSION = "v1.3.11"
 
 
 def _append_diag(text):
@@ -728,10 +728,13 @@ class CourseSelectScreen(MDScreen):
         # 区块：选择课程
         root.add_widget(section_label("选择课程"))
         # 课程列表
-        self.list = MDList()
-        scroll = ScrollView(size_hint_y=0.3)
-        scroll.add_widget(self.list)
-        root.add_widget(scroll)
+        # 用 TapScrollView + TapRow：MDList/OneLineListItem 是 ButtonBehavior，
+        # 会抢触摸导致列表滑不动（与改签弹窗同一个根因）
+        self.list = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(2))
+        self.list.bind(minimum_height=self.list.setter("height"))
+        self.course_scroll = TapScrollView(size_hint_y=0.3, do_scroll_x=False)
+        self.course_scroll.add_widget(self.list)
+        root.add_widget(self.course_scroll)
         # 区块：操作
         root.add_widget(section_label("操作"))
         # 操作按钮
@@ -770,7 +773,10 @@ class CourseSelectScreen(MDScreen):
             Clock.schedule_once(lambda dt: self.app.goto("login"), 0)
             return
         self.list.clear_widgets()
-        self.list.add_widget(OneLineListItem(text="加载课程中..."))
+        self.course_scroll.tap_rows = []
+        self.list.add_widget(MDLabel(text="加载课程中...", theme_text_color="Custom",
+                                     text_color=TEXT_SUB, size_hint_y=None,
+                                     height=dp(48), padding=(dp(14), dp(12))))
         def work():
             try:
                 self.courses = self.app.client.get_my_courses() or []
@@ -781,17 +787,24 @@ class CourseSelectScreen(MDScreen):
 
     def show_courses(self):
         self.list.clear_widgets()
+        self.course_scroll.tap_rows = []
         if not self.courses:
-            self.list.add_widget(OneLineListItem(text="(未找到课程)", theme_text_color="Secondary"))
+            self.list.add_widget(MDLabel(text="(未找到课程)", theme_text_color="Custom",
+                                         text_color=TEXT_SUB, size_hint_y=None,
+                                         height=dp(48), padding=(dp(14), dp(12))))
             return
         for c in self.courses:
             ctype = c.get('_courseType', '?')
-            item = TwoLineListItem(
-                text=c.get('courseName', '?'),
-                secondary_text=self._course_type_label(ctype),
-            )
-            item.bind(on_release=lambda x, course=c: self.select_course(course))
-            self.list.add_widget(item)
+            row = TapRow(on_tap=lambda course=c: self.select_course(course))
+            row.add_widget(MDLabel(text=c.get('courseName', '?'),
+                                   theme_text_color="Custom", text_color=TEXT_MAIN,
+                                   size_hint_y=None, height=dp(30)))
+            row.add_widget(MDLabel(text=self._course_type_label(ctype),
+                                   theme_text_color="Custom", text_color=TEXT_SUB,
+                                   font_style="Caption",
+                                   size_hint_y=None, height=dp(24)))
+            self.list.add_widget(row)
+            self.course_scroll.tap_rows.append(row)
 
     def _course_type_label(self, ctype):
         m = {"SPOC": "SPOC · 校内课程", "MOOC": "MOOC · 慕课", "ZYK": "资源库课程"}
