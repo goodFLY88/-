@@ -1374,15 +1374,26 @@ class ICVEApp(MDApp):
             # 查找失败会被静默吞掉，导致"改了代码但状态栏还是不出来"）
             FLAG_FULLSCREEN = 1024                    # 0x00000400
             FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS = -2147483648  # 0x80000000 (Java int)
+            FLAG_LAYOUT_NO_LIMITS = 512               # 0x00000200 内容铺到系统栏后
+            FLAG_LAYOUT_IN_SCREEN = 256               # 0x00000100 同上（旧机型）
 
             def _apply():
                 try:
                     window = mActivity.getWindow()
                     window.clearFlags(FLAG_FULLSCREEN)          # 退出全屏
+                    # 清掉"内容延伸到系统栏后面"的布局 flag（沉浸式常见根因）
+                    window.clearFlags(FLAG_LAYOUT_NO_LIMITS)
+                    window.clearFlags(FLAG_LAYOUT_IN_SCREEN)
                     window.addFlags(FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+                    # 让内容为系统栏留出空间（非沉浸，状态栏独立占位）
+                    view = window.getDecorView()
+                    try:
+                        view.setFitsSystemWindows(True)
+                    except Exception:
+                        pass
                     # 状态栏底色取主蓝、图标用白色（清掉 LIGHT_STATUS_BAR），
                     # 与页面顶部蓝色标题栏/占位条无缝衔接
-                    window.getDecorView().setSystemUiVisibility(0)
+                    view.setSystemUiVisibility(0)
                     Color = autoclass("android.graphics.Color")
                     window.setStatusBarColor(Color.parseColor("#3B82F6"))
                     # Android 11+ 再用 WindowInsetsController 主动 show 一次

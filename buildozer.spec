@@ -37,6 +37,10 @@ version = 1.3
 requirements = python3, kivy==2.3.1, kivymd==1.0.2, pillow, requests>=2.28.0, urllib3, certifi, idna, chardet
 # 屏幕方向（portrait=竖屏）
 orientation = portrait
+# 关闭全屏：让系统状态栏（时间/电量）正常显示，内容排在状态栏之下。
+# 注意属性名必须是 fullscreen，不是 android.fullscreen——后者不是
+# buildozer 的有效键，会被静默忽略，导致打包出来仍是沉浸全屏。
+fullscreen = 0
 
 # 安卓权限
 android.permissions = INTERNET
@@ -74,7 +78,7 @@ android.release_artifact = apk
 # android.keyalias = mykey
 
 # 全屏 / 状态栏
-android.fullscreen = 0
+# （fullscreen 已在上方 [app] 段设为 0；android.fullscreen 不是有效键，已移除）
 
 # 窗口标题栏图标（后续放 icon.png 后启用）
 # icon.filename = icon.png
