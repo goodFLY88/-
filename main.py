@@ -107,7 +107,7 @@ def _patch_pil_rectangle():
 
 _patch_pil_rectangle()
 
-APP_VERSION = "v1.3.12"
+APP_VERSION = "v1.3.13"
 
 
 def _append_diag(text):
@@ -723,6 +723,71 @@ class AccountsScreen(MDScreen):
         dialog.open()
 
 
+class SignPickScreen(MDScreen):
+    """选择签到记录（整页列表）。
+
+    为什么不再用弹窗：MDDialog / ModalView 里套 ScrollView 在真机上
+    始终滑不动（连换两种容器 + 修好触摸抢占都不行）。整页滚动是 Kivy
+    最可靠的场景，所以改成独立页面。
+    """
+
+    def __init__(self, app, **kw):
+        super().__init__(**kw)
+        self.name = "signpick"
+        self.app = app
+        self.items = []
+        self.ctx = ("", "", "")
+
+        root = MDBoxLayout(orientation="vertical", md_bg_color=BG)
+        root.add_widget(topbar("选择签到记录", app))
+        self.hint = MDLabel(text="", theme_text_color="Custom", text_color=TEXT_SUB,
+                            size_hint_y=None, height=dp(44),
+                            padding=(dp(16), dp(12)))
+        root.add_widget(self.hint)
+
+        self.list = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(2),
+                              padding=(0, dp(4), 0, dp(4)))
+        self.list.bind(minimum_height=self.list.setter("height"))
+        self.scroll = TapScrollView(do_scroll_x=False)
+        self.scroll.add_widget(self.list)
+        root.add_widget(self.scroll)
+
+        back = primary_button("返回", height=dp(46), bg=SEPARATOR)
+        back.text_color = TEXT_MAIN
+        back.bind(on_release=lambda *_: app.goto("sign"))
+        pad = MDBoxLayout(size_hint_y=None, height=dp(60), padding=(dp(16), dp(6)))
+        pad.add_widget(back)
+        root.add_widget(pad)
+        self.add_widget(root)
+
+    def load(self, items, ctx):
+        self.items = items
+        self.ctx = ctx
+        self.hint.text = (f"{APP_VERSION} · 共 {len(items)} 条 · "
+                          "上下滑动选择，点一条改签")
+        self.list.clear_widgets()
+        self.scroll.tap_rows = []
+        for s in items:
+            st = str(s.get("myStatus", "0"))
+            st_label = SIGN_STATUS_MAP.get(st, st)
+            row = TapRow(on_tap=lambda sig=s: self.pick(sig))
+            row.add_widget(MDLabel(
+                text=f"{s.get('teachDate','')}  {s.get('teachTitle','?')}",
+                theme_text_color="Custom", text_color=TEXT_MAIN,
+                size_hint_y=None, height=dp(30)))
+            row.add_widget(MDLabel(
+                text=f"当前状态：{st_label}  —— 点击改签",
+                theme_text_color="Custom", text_color=TEXT_SUB,
+                font_style="Caption", size_hint_y=None, height=dp(26)))
+            self.list.add_widget(row)
+            self.scroll.tap_rows.append(row)
+        self.scroll.scroll_y = 1
+
+    def pick(self, sign):
+        """选中某条记录 → 回到签到页并弹出状态选择（纯按钮，无需滚动）。"""
+        self.app.screens["sign"]._pick_sign_status(sign)
+
+
 class CourseSelectScreen(MDScreen):
     """课程选择 + 操作页。
 
@@ -753,7 +818,7 @@ class CourseSelectScreen(MDScreen):
         self.list = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(2))
         self.list.bind(minimum_height=self.list.setter("height"))
         self.course_scroll = TapScrollView(size_hint_y=None,
-                                           height=dp(74) * 3 + dp(4),
+                                           height=dp(74) * 6 + dp(8),
                                            do_scroll_x=False)
         self.course_scroll.add_widget(self.list)
         root.add_widget(self.course_scroll)
@@ -782,7 +847,7 @@ class CourseSelectScreen(MDScreen):
         # 传 height 让 make_card 不再绑 minimum_height，否则手动设高度会被覆盖
         log_card = make_card(padding=(dp(4), dp(4), dp(4), dp(4)), height=dp(150))
         log_card.add_widget(self.log)
-        sv = ScrollView(size_hint_y=1)
+        sv = ScrollView(size_hint_y=None, height=dp(130))
         sv.add_widget(log_card)
         root.add_widget(sv)
 
@@ -1004,63 +1069,14 @@ class CourseSelectScreen(MDScreen):
         threading.Thread(target=work, daemon=True).start()
 
     def _show_sign_dialog(self, items, cid, ciid, coid):
-        """签到记录选择弹窗（可滚动，尺寸自控）。
+        """打开"选择签到记录"整页。
 
-        为什么不用 MDDialog：它按 content_cls 的高度自动撑开，条目一多就
-        比屏幕还高，顶部提示和底部按钮被挤出屏幕、内容也无法滑动
-        （真机截图实测：上下都溢出）。改用固定尺寸的 ModalView，
-        内部的 ScrollView 用弹性高度占满剩余空间，滚动必然生效。
+        弹窗内嵌滚动在真机上始终滑不动（MDDialog / ModalView 都试过），
+        整页滚动是 Kivy 最可靠的场景，所以改为跳转独立页面。
         """
-        from kivy.uix.modalview import ModalView
-
-        inner = BoxLayout(orientation="vertical", spacing=dp(2), size_hint_y=None)
-        inner.bind(minimum_height=inner.setter("height"))
-        rows = []
-        for s in items:
-            st = str(s.get("myStatus", "0"))
-            st_label = SIGN_STATUS_MAP.get(st, st)
-            # 用 TapRow 而非 TwoLineListItem：后者是 ButtonBehavior，
-            # 按下会 grab 触摸，导致这层列表滚不动（真机两次实测）
-            row = TapRow(on_tap=lambda sig=s: self._pick_sign_status(sig))
-            row.add_widget(MDLabel(
-                text=f"{s.get('teachDate','')}  {s.get('teachTitle','?')}",
-                theme_text_color="Custom", text_color=TEXT_MAIN,
-                size_hint_y=None, height=dp(30)))
-            row.add_widget(MDLabel(
-                text=f"当前状态：{st_label}  —— 点击改签",
-                theme_text_color="Custom", text_color=TEXT_SUB,
-                size_hint_y=None, height=dp(26), font_style="Caption"))
-            inner.add_widget(row)
-            rows.append(row)
-
-        scroll = TapScrollView(do_scroll_x=False, bar_width=dp(3))
-        scroll.tap_rows = rows
-        scroll.add_widget(inner)
-
-        card = MDCard(orientation="vertical", padding=dp(16), spacing=dp(8),
-                      radius=CARD_RADIUS, md_bg_color=CARD_BG, elevation=0,
-                      size_hint=(1, 1))
-        card.add_widget(MDLabel(text="自定义改签", font_style="H6",
-                                theme_text_color="Custom", text_color=TEXT_MAIN,
-                                size_hint_y=None, height=dp(34)))
-        card.add_widget(MDLabel(
-            text=f"{APP_VERSION} · 共 {len(items)} 条 · 上下滑动选择",
-            theme_text_color="Custom", text_color=TEXT_SUB,
-            size_hint_y=None, height=dp(24)))
-        card.add_widget(scroll)                      # 弹性：占满剩余高度
-        close_btn = primary_button("关闭", height=dp(46), bg=SEPARATOR)
-        close_btn.text_color = TEXT_MAIN
-        card.add_widget(close_btn)
-
-        # auto_dismiss=False：拖动列表时不要误触关闭；退出用「关闭」按钮
-        view = ModalView(size_hint=(0.92, 0.78), auto_dismiss=False,
-                         background="", background_color=(0, 0, 0, 0.45))
-        view.add_widget(card)
-        close_btn.bind(on_release=lambda *_: view.dismiss())
-
         self._sign_ctx = (cid, ciid, coid)
-        self._dialog = view
-        view.open()
+        self.app.screens["signpick"].load(items, self._sign_ctx)
+        self.app.goto("signpick")
 
     def _pick_sign_status(self, sign):
         if getattr(self, "_dialog", None): self._dialog.dismiss()
@@ -1079,13 +1095,23 @@ class CourseSelectScreen(MDScreen):
             grid.add_widget(btn)
         layout.add_widget(grid)
         cancel = MDFlatButton(text="取消", size_hint=(1, None), height=dp(40))
-        cancel.bind(on_release=lambda *_: self._dialog.dismiss())
+        cancel.bind(on_release=lambda *_: self._cancel_pick())
         layout.add_widget(cancel)
         self._dialog = MDDialog(title="选择改签状态", type="custom", content_cls=layout)
         self._dialog.open()
 
+    def _cancel_pick(self):
+        if getattr(self, "_dialog", None):
+            self._dialog.dismiss()
+        # 从整页选择记录过来时，取消后回到签到页
+        if self.app.sm.current == "signpick":
+            self.app.goto("sign")
+
     def _do_custom_sign(self, sign, status_type):
         if getattr(self, "_dialog", None): self._dialog.dismiss()
+        # 从整页选择记录过来：执行后回到签到页看日志
+        if self.app.sm.current == "signpick":
+            self.app.goto("sign")
         cid, ciid, coid = self._sign_ctx
         client = self.app.client
         payload = {
@@ -1144,7 +1170,9 @@ class ICVEApp(MDApp):
         self.speed = CourseSelectScreen(self, "speed", "一键刷课", "选择课程后自动刷完所有视频", "开始刷课", "speed")
         self.answer = CourseSelectScreen(self, "answer", "自动答题", "选择课程后拉取作业并自动作答", "拉取并作答", "answer")
         self.sign = CourseSelectScreen(self, "sign", "签到改签", "补签或手动修改签到状态", "拉取并补签", "sign")
-        for s in (self.login, self.dashboard, self.accounts, self.courses, self.speed, self.answer, self.sign):
+        self.signpick = SignPickScreen(self)
+        for s in (self.login, self.dashboard, self.accounts, self.courses, self.speed,
+                  self.answer, self.sign, self.signpick):
             sm.add_widget(s)
         self.nav_drawer = MDNavigationDrawer()
         self.sidebar = SidebarMenu(self)
@@ -1155,7 +1183,7 @@ class ICVEApp(MDApp):
         self.sm = sm
         self.screens = {"login": self.login, "dashboard": self.dashboard, "accounts": self.accounts,
                         "courses": self.courses, "speed": self.speed, "answer": self.answer,
-                        "sign": self.sign}
+                        "sign": self.sign, "signpick": self.signpick}
         sm.current = "login"
         return self.nav_layout
 
