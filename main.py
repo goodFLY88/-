@@ -642,8 +642,8 @@ class DashboardScreen(MDScreen):
 
         box.add_widget(section_label("快捷功能"))
 
-        # 功能入口（KivyMD 原生 TwoLineListItem，内部布局已调好，
-        # 避免手搓卡片在中文字体下高度溢出导致文字重叠）
+        # 功能入口统一包进卡片，恢复 galaxy 卡片层次（避免裸列显得像旧版）
+        func_card = make_card(padding=(dp(8), dp(6), dp(8), dp(6)))
         for label, desc, target in [
             ("我的课程", "浏览已选课程", "courses"),
             ("一键刷课", "自动刷完课程视频", "speed"),
@@ -655,7 +655,8 @@ class DashboardScreen(MDScreen):
                                    theme_text_color="Primary",
                                    secondary_theme_text_color="Secondary")
             item.bind(on_release=lambda x, t=target: self.app.goto(t))
-            box.add_widget(item)
+            func_card.add_widget(item)
+        box.add_widget(func_card)
 
         scroll.add_widget(box)
         root.add_widget(scroll)
@@ -805,64 +806,67 @@ class CourseSelectScreen(MDScreen):
         self.action_key = action_key
         self.courses = []
         self.selected_course = None
+        self._monitoring = False
         root = MDBoxLayout(orientation="vertical", md_bg_color=BG)
         root.add_widget(topbar(title, app))
-        # 副标题
-        root.add_widget(MDLabel(text=subtitle, theme_text_color="Custom", text_color=TEXT_SUB,
-                                size_hint_y=None, height=dp(40), padding=(dp(16), dp(8))))
-        # 区块：选择课程
-        root.add_widget(section_label("选择课程"))
-        # 课程列表
-        # 用 TapScrollView + TapRow：MDList/OneLineListItem 是 ButtonBehavior，
-        # 会抢触摸导致列表滑不动（与改签弹窗同一个根因）
-        self.list = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(2))
+
+        # 单一外层滚动容器：整个页面只有这一个 ScrollView，
+        # 课程行/按钮/日志全部平铺，彻底避免嵌套 ScrollView 同方向冲突
+        self.course_scroll = TapScrollView(do_scroll_x=False)
+        self.list = BoxLayout(orientation="vertical", size_hint_y=None,
+                              spacing=dp(2), padding=(0, dp(6), 0, dp(20)))
         self.list.bind(minimum_height=self.list.setter("height"))
-        self.course_scroll = TapScrollView(size_hint_y=None,
-                                           height=dp(74) * 6 + dp(8),
-                                           do_scroll_x=False)
-        self.course_scroll.add_widget(self.list)
-        root.add_widget(self.course_scroll)
+
+        # 副标题
+        self.list.add_widget(MDLabel(text=subtitle, theme_text_color="Custom",
+                                     text_color=TEXT_SUB, size_hint_y=None,
+                                     height=dp(40), padding=(dp(16), dp(8))))
+        # 区块：选择课程（课程行直接平铺，点击交给 TapScrollView）
+        self.list.add_widget(section_label("选择课程"))
+
         # 区块：操作
-        root.add_widget(section_label("操作"))
-        # 操作按钮
+        self.list.add_widget(section_label("操作"))
+        op_pad = MDBoxLayout(size_hint_y=None, height=dp(58),
+                             padding=(dp(16), dp(4)))
         self.action_btn = primary_button(action_label, height=dp(50))
         self.action_btn.bind(on_release=lambda *_: self.do_action())
-        root.add_widget(self.action_btn)
+        op_pad.add_widget(self.action_btn)
+        self.list.add_widget(op_pad)
         if action_key == "sign":
+            cp = MDBoxLayout(size_hint_y=None, height=dp(54),
+                             padding=(dp(16), dp(4)))
             self.custom_btn = primary_button("自定义改签", height=dp(46), bg=SEPARATOR)
             self.custom_btn.text_color = TEXT_MAIN
             self.custom_btn.bind(on_release=lambda *_: self.custom_sign())
-            root.add_widget(self.custom_btn)
+            cp.add_widget(self.custom_btn)
+            self.list.add_widget(cp)
+            mp = MDBoxLayout(size_hint_y=None, height=dp(54),
+                             padding=(dp(16), dp(4)))
             self.monitor_btn = primary_button("启动自动监听签到", height=dp(46), bg=GREEN)
             self.monitor_btn.bind(on_release=lambda *_: self.toggle_monitor())
-            root.add_widget(self.monitor_btn)
-            self._monitoring = False
-            self._monitor_thread = None
-        # 区块：日志
-        root.add_widget(section_label("运行日志"))
-        # 日志（卡片内，白底）
+            mp.add_widget(self.monitor_btn)
+            self.list.add_widget(mp)
+
+        # 区块：日志（卡片自适应高度，随外层一起滚动）
+        self.list.add_widget(section_label("运行日志"))
+        log_wrap = MDBoxLayout(size_hint_y=None, padding=(dp(16), dp(4)))
+        log_wrap.bind(minimum_height=log_wrap.setter("height"))
         self.log = MDLabel(text="选择课程后点按钮开始", size_hint_y=None, markup=True,
                            halign="left", valign="top", theme_text_color="Custom",
                            text_color=TEXT_MAIN, padding=(dp(12), dp(10)))
-        # 传 height 让 make_card 不再绑 minimum_height，否则手动设高度会被覆盖
-        log_card = make_card(padding=(dp(4), dp(4), dp(4), dp(4)), height=dp(150))
+        log_card = make_card(padding=(dp(4), dp(4), dp(4), dp(4)))
         log_card.add_widget(self.log)
-        sv = ScrollView(size_hint_y=None, height=dp(130))
-        sv.add_widget(log_card)
-        root.add_widget(sv)
 
-        # 日志卡片至少撑满可视区：否则固定 150dp 高会让下半屏留一大片空白
-        # （真机截图反馈）。内容变长时再继续撑高，由外层 ScrollView 滚动。
         def _fit_log(*_):
-            need = self.log.texture_size[1] + dp(16)
+            need = max(self.log.texture_size[1] + dp(16), dp(80))
             if abs(self.log.height - need) > 1:
                 self.log.height = need
-            target = max(need, sv.height)
-            if abs(log_card.height - target) > 1:
-                log_card.height = target
-
         self.log.bind(texture_size=_fit_log)
-        sv.bind(height=_fit_log)
+        log_wrap.add_widget(log_card)
+        self.list.add_widget(log_wrap)
+
+        self.course_scroll.add_widget(self.list)
+        root.add_widget(self.course_scroll)
         self.add_widget(root)
 
     def on_pre_enter(self):
