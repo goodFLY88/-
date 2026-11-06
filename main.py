@@ -107,7 +107,7 @@ def _patch_pil_rectangle():
 
 _patch_pil_rectangle()
 
-APP_VERSION = "v1.3.9"
+APP_VERSION = "v1.3.10"
 
 
 def _append_diag(text):
@@ -213,6 +213,64 @@ def primary_button(text, height=dp(50), bg=None, **kw):
     btn = MDRaisedButton(text=text, size_hint=(1, None), height=height,
                          radius=BTN_RADIUS, md_bg_color=bg or PRIMARY, **kw)
     return btn
+
+
+class TapRow(MDBoxLayout):
+    """列表行容器（不处理触摸）。
+
+    为什么不用 OneLineListItem / TwoLineListItem：它们是 ButtonBehavior，
+    on_touch_down 会 grab 触摸，嵌在 ScrollView 里时滚动手势被吞掉
+    （真机两次实测：换 MDDialog→ModalView 都没用，问题在行本身）。
+    触摸判定统一交给 TapScrollView。
+    """
+
+    def __init__(self, on_tap=None, **kw):
+        super().__init__(**kw)
+        self.on_tap = on_tap
+        self.size_hint_y = None
+        self.height = dp(74)
+        self.padding = (dp(14), dp(8), dp(14), dp(8))
+        self.spacing = dp(2)
+
+
+class TapScrollView(ScrollView):
+    """可滚动 + 可点击行的 ScrollView。
+
+    滚动和点击的冲突处理：按下时记录坐标，移动超过阈值标记为"滚动过"，
+    抬起时若没移动过，就把起点坐标交给对应的行触发点击。
+    这样既不抢触摸（滚动正常），又能精确响应点按。
+    """
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.tap_rows = []
+        self._down = None
+        self._moved = False
+
+    def on_touch_down(self, touch):
+        if self.collide_point(*touch.pos):
+            self._down = (touch.x, touch.y, time.time())
+            self._moved = False
+        return super().on_touch_down(touch)
+
+    def on_touch_move(self, touch):
+        if self._down and not self._moved:
+            x, y, _ = self._down
+            if abs(touch.x - x) > dp(12) or abs(touch.y - y) > dp(12):
+                self._moved = True
+        return super().on_touch_move(touch)
+
+    def on_touch_up(self, touch):
+        res = super().on_touch_up(touch)
+        d = self._down
+        moved = self._moved
+        self._down = None
+        if d and not moved and time.time() - d[2] < 1.2:
+            for row in self.tap_rows:
+                if row.collide_point(d[0], d[1]) and getattr(row, "on_tap", None):
+                    row.on_tap()
+                    break
+        return res
 
 
 LOGIN_URL = f"{SSO_BASE}/h5/?mode=simple&source=15&redirect=http://127.0.0.1:9527#/login"
@@ -910,17 +968,26 @@ class CourseSelectScreen(MDScreen):
 
         inner = BoxLayout(orientation="vertical", spacing=dp(2), size_hint_y=None)
         inner.bind(minimum_height=inner.setter("height"))
+        rows = []
         for s in items:
             st = str(s.get("myStatus", "0"))
             st_label = SIGN_STATUS_MAP.get(st, st)
-            item = TwoLineListItem(
+            # 用 TapRow 而非 TwoLineListItem：后者是 ButtonBehavior，
+            # 按下会 grab 触摸，导致这层列表滚不动（真机两次实测）
+            row = TapRow(on_tap=lambda sig=s: self._pick_sign_status(sig))
+            row.add_widget(MDLabel(
                 text=f"{s.get('teachDate','')}  {s.get('teachTitle','?')}",
-                secondary_text=f"当前状态：{st_label}  —— 点击改签",
-            )
-            item.bind(on_release=lambda x, sig=s: self._pick_sign_status(sig))
-            inner.add_widget(item)
+                theme_text_color="Custom", text_color=TEXT_MAIN,
+                size_hint_y=None, height=dp(30)))
+            row.add_widget(MDLabel(
+                text=f"当前状态：{st_label}  —— 点击改签",
+                theme_text_color="Custom", text_color=TEXT_SUB,
+                size_hint_y=None, height=dp(26), font_style="Caption"))
+            inner.add_widget(row)
+            rows.append(row)
 
-        scroll = ScrollView(do_scroll_x=False, bar_width=dp(3))
+        scroll = TapScrollView(do_scroll_x=False, bar_width=dp(3))
+        scroll.tap_rows = rows
         scroll.add_widget(inner)
 
         card = MDCard(orientation="vertical", padding=dp(16), spacing=dp(8),
@@ -938,7 +1005,8 @@ class CourseSelectScreen(MDScreen):
         close_btn.text_color = TEXT_MAIN
         card.add_widget(close_btn)
 
-        view = ModalView(size_hint=(0.92, 0.78), auto_dismiss=True,
+        # auto_dismiss=False：拖动列表时不要误触关闭；退出用「关闭」按钮
+        view = ModalView(size_hint=(0.92, 0.78), auto_dismiss=False,
                          background="", background_color=(0, 0, 0, 0.45))
         view.add_widget(card)
         close_btn.bind(on_release=lambda *_: view.dismiss())
