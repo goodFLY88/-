@@ -107,7 +107,7 @@ def _patch_pil_rectangle():
 
 _patch_pil_rectangle()
 
-APP_VERSION = "v1.3.11"
+APP_VERSION = "v1.3.12"
 
 
 def _append_diag(text):
@@ -247,6 +247,27 @@ class TapScrollView(ScrollView):
         self._down = None
         self._moved = False
 
+    def _row_at(self, x, y):
+        """把窗口坐标换算成内容坐标后找命中的行。
+
+        关键：Kivy 的 ScrollView 滚动靠画布平移，子控件的 .y **不会**
+        随滚动更新（实测：滚动前后 row[0].y 完全相同）。所以不能直接
+        row.collide_point()，否则滑过之后再点就会命中错误的行
+        （真机反馈"点击选择的课程不对"）。
+        """
+        if not self.tap_rows or not self.children:
+            return None
+        inner = self.children[0]
+        if inner.height > self.height:
+            offset = (inner.height - self.height) * self.scroll_y
+        else:
+            offset = 0
+        cy = offset + (y - self.y)
+        for row in self.tap_rows:
+            if row.x <= x <= row.right and row.y <= cy <= row.top:
+                return row
+        return None
+
     def on_touch_down(self, touch):
         if self.collide_point(*touch.pos):
             self._down = (touch.x, touch.y, time.time())
@@ -266,10 +287,9 @@ class TapScrollView(ScrollView):
         moved = self._moved
         self._down = None
         if d and not moved and time.time() - d[2] < 1.2:
-            for row in self.tap_rows:
-                if row.collide_point(d[0], d[1]) and getattr(row, "on_tap", None):
-                    row.on_tap()
-                    break
+            row = self._row_at(d[0], d[1])
+            if row is not None and getattr(row, "on_tap", None):
+                row.on_tap()
         return res
 
 
@@ -732,7 +752,9 @@ class CourseSelectScreen(MDScreen):
         # 会抢触摸导致列表滑不动（与改签弹窗同一个根因）
         self.list = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(2))
         self.list.bind(minimum_height=self.list.setter("height"))
-        self.course_scroll = TapScrollView(size_hint_y=0.3, do_scroll_x=False)
+        self.course_scroll = TapScrollView(size_hint_y=None,
+                                           height=dp(74) * 3 + dp(4),
+                                           do_scroll_x=False)
         self.course_scroll.add_widget(self.list)
         root.add_widget(self.course_scroll)
         # 区块：操作
@@ -757,13 +779,25 @@ class CourseSelectScreen(MDScreen):
         self.log = MDLabel(text="选择课程后点按钮开始", size_hint_y=None, markup=True,
                            halign="left", valign="top", theme_text_color="Custom",
                            text_color=TEXT_MAIN, padding=(dp(12), dp(10)))
-        self.log.bind(texture_size=lambda w, s: setattr(w, "height", max(s[1], 150)))
-        log_card = make_card(padding=(dp(4), dp(4), dp(4), dp(4)))
+        # 传 height 让 make_card 不再绑 minimum_height，否则手动设高度会被覆盖
+        log_card = make_card(padding=(dp(4), dp(4), dp(4), dp(4)), height=dp(150))
         log_card.add_widget(self.log)
-        self.log.bind(texture_size=lambda w, s: setattr(log_card, "height", max(s[1] + 8, 150)))
         sv = ScrollView(size_hint_y=1)
         sv.add_widget(log_card)
         root.add_widget(sv)
+
+        # 日志卡片至少撑满可视区：否则固定 150dp 高会让下半屏留一大片空白
+        # （真机截图反馈）。内容变长时再继续撑高，由外层 ScrollView 滚动。
+        def _fit_log(*_):
+            need = self.log.texture_size[1] + dp(16)
+            if abs(self.log.height - need) > 1:
+                self.log.height = need
+            target = max(need, sv.height)
+            if abs(log_card.height - target) > 1:
+                log_card.height = target
+
+        self.log.bind(texture_size=_fit_log)
+        sv.bind(height=_fit_log)
         self.add_widget(root)
 
     def on_pre_enter(self):
