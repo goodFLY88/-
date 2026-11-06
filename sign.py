@@ -7,8 +7,8 @@
 """
 
 import json
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Optional
 
 from zjy_client import ZjyClient
 from utils import log
@@ -41,13 +41,18 @@ def convert_gesture(raw) -> str:
 
 # ==================== 签到列表查询 ====================
 
-def get_signs(client: ZjyClient, class_id: str, course_info_id: str, course_id: str) -> list:
+def get_signs(client: ZjyClient, class_id: str, course_info_id: str, course_id: str,
+              max_sessions: int = 12, recent_days: int = 0) -> list:
     """获取课程下的签到活动列表及当前学生的签到状态。
 
+    :param max_sessions: 最多查多少个课堂会话（每个会话要 1 次请求）。
+        原来固定 40，监听线程每轮对所有课程跑一遍 → 请求量爆炸。
+    :param recent_days: >0 时只查最近 N 天有课的会话（监听用 1，只看今天）。
     :return: list[dict],每个含:
         teachId/teachDate/teachTitle/signId/signType/gesture/
         startTime/endTime/myStatus/mySignTime
     """
+    _t0 = time.time()
     # 步骤一:获取课堂会话列表
     face_data = client.api_get("spoc/courseFaceTeachInfo/list", {
         "classId": class_id, "courseInfoId": course_info_id,
@@ -58,7 +63,13 @@ def get_signs(client: ZjyClient, class_id: str, course_info_id: str, course_id: 
         return []
 
     sessions.sort(key=lambda s: s.get("teachDate", s.get("date", "")), reverse=True)
-    sessions = sessions[:40]  # 最近40个课堂会话
+    # 只保留最近 N 天有课的会话（监听场景只看今天，避免翻历史）
+    if recent_days > 0:
+        from datetime import date, timedelta
+        cutoff = (date.today() - timedelta(days=recent_days - 1)).isoformat()
+        sessions = [s for s in sessions
+                    if str(s.get("teachDate", "")).replace("/", "-")[:10] >= cutoff]
+    sessions = sessions[:max_sessions]   # 原来是固定 40，现在可控
 
     # 步骤二:并发获取每个课堂会话下的签到活动
     sign_activities = []
@@ -85,6 +96,10 @@ def get_signs(client: ZjyClient, class_id: str, course_info_id: str, course_id: 
                         "signId": a.get("activityId", ""),
                         "signType": a.get("signType", ""),
                         "gesture": convert_gesture(a.get("gesture", "")),
+                        # 活动接口若已带起止时间，后续就不必再单独查签到详情
+                        "startTime": (a.get("startTime") or a.get("signStartTime")
+                                      or a.get("beginTime") or ""),
+                        "endTime": (a.get("endTime") or a.get("signEndTime") or ""),
                     })
         return acts_found
 
@@ -104,40 +119,26 @@ def get_signs(client: ZjyClient, class_id: str, course_info_id: str, course_id: 
         return []
 
     # 步骤三:并发获取当前学生在每个签到活动中的签到状态
-    my_name = client.user_info.get("nickName", "") if client.user_info else ""
-    my_stu_id = client.stu_id
-
     def fetch_student_status(sign_act):
         sid = sign_act["signId"]
 
-        # 获取签到详情(开始/结束时间、手势)
-        detail = client.api_get(f"spoc/courseFaceTeachSign/{sid}")
-        if detail and detail.get("data"):
-            d = detail["data"]
-            sign_act["startTime"] = d.get("startTime") or d.get("signStartTime") or d.get("beginTime") or ""
-            sign_act["endTime"] = d.get("endTime") or d.get("signEndTime") or ""
-            if d.get("gesture") and not sign_act["gesture"]:
-                sign_act["gesture"] = convert_gesture(d.get("gesture"))
+        # 获取签到详情(开始/结束时间、手势)：活动接口已带起止时间就跳过，
+        # 每条签到省 1 次请求（12 个会话 × 2 条 = 省 24 次/门课）
+        if not (sign_act.get("startTime") and sign_act.get("endTime")):
+            detail = client.api_get(f"spoc/courseFaceTeachSign/{sid}")
+            if detail and detail.get("data"):
+                d = detail["data"]
+                sign_act["startTime"] = (d.get("startTime") or d.get("signStartTime")
+                                         or d.get("beginTime") or "")
+                sign_act["endTime"] = d.get("endTime") or d.get("signEndTime") or ""
+                if d.get("gesture") and not sign_act["gesture"]:
+                    sign_act["gesture"] = convert_gesture(d.get("gesture"))
 
         # 获取出勤记录,提取当前账号状态
-        my_record = None
-        for api in ["spoc/courseFaceTeachSignStudent/page/listAll",
-                    "spoc/courseFaceTeachSignStudent/list",
-                    "spoc/courseFaceTeachSignStudent/page/notSign"]:
-            data3 = client.api_get(api, {
-                "signId": sid, "classId": class_id,
-                "pageNum": "1", "pageSize": "2000",
-            })
-            if data3:
-                rows = client.extract_rows(data3)
-                for r in rows:
-                    rname = r.get("studentName", "")
-                    rsid = r.get("studentId", "")
-                    if (my_name and my_name == rname) or (my_stu_id and str(my_stu_id) == str(rsid)):
-                        my_record = r
-                        break
-            if my_record:
-                break
+        # 走 client._fetch_sign_records（命中即停 + 15s 缓存），
+        # 避免 UI 与监听线程对同一签到重复打 3 个接口
+        records = client._fetch_sign_records(sid, class_id)
+        my_record = client._match_my_record(records)
 
         if my_record:
             sign_act["myStatus"] = str(my_record.get("signResultType", "0"))
@@ -167,6 +168,8 @@ def get_signs(client: ZjyClient, class_id: str, course_info_id: str, course_id: 
                 log(f"获取签到状态异常: {e}", "ERROR")
 
     final_signs.sort(key=lambda x: x.get("teachDate", ""), reverse=True)
+    log(f"[签到] {course_id[:12]} 会话{len(sessions)} 签到{len(final_signs)} "
+        f"耗时{time.time()-_t0:.1f}s", "DEBUG")
     return final_signs
 
 

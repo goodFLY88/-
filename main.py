@@ -107,7 +107,7 @@ def _patch_pil_rectangle():
 
 _patch_pil_rectangle()
 
-APP_VERSION = "v1.3.8"
+APP_VERSION = "v1.3.9"
 
 
 def _append_diag(text):
@@ -526,6 +526,11 @@ class LoginScreen(MDScreen):
     def _on_login(self, client, sso=""):
         if client:
             self.app.client = client
+            # 新会话必须清缓存：否则沿用上一个账号的课程/签到记录
+            try:
+                client.clear_cache()
+            except Exception:
+                pass
             if sso: save_account(client, sso)
             self.input.text = ""
             self.status.text = "登录成功"
@@ -761,7 +766,11 @@ class CourseSelectScreen(MDScreen):
         key = self.action_key
 
         if key is None:
-            # 只读浏览页:重新拉取课程列表
+            # 只读浏览页:重新拉取课程列表（手动刷新要忽略缓存）
+            try:
+                self.app.client.clear_cache()
+            except Exception:
+                pass
             self.on_pre_enter()
             return
 
@@ -840,7 +849,10 @@ class CourseSelectScreen(MDScreen):
                 courses = self.app.client.get_my_courses() or []
                 for c in courses:
                     cid = c.get("classId",""); ciid = c.get("courseInfoId",""); coid = c.get("courseId","")
-                    signs = get_signs(self.app.client, cid, ciid, coid)
+                    # 监听只关心"今天有没有新签到"：只看最近 1 天、最多 3 个会话，
+                    # 否则每 30 秒对每门课打上百次请求（真机卡顿主因）
+                    signs = get_signs(self.app.client, cid, ciid, coid,
+                                      max_sessions=3, recent_days=1)
                     for s in signs:
                         key = (cid, s.get("signId"))
                         not_signed = str(s.get("myStatus","0")) == "0"
@@ -1227,6 +1239,11 @@ class ICVEApp(MDApp):
 
     def logout(self):
         """退出登录:清会话 → 停监听 → 回登录页。"""
+        if self.client:
+            try:
+                self.client.clear_cache()
+            except Exception:
+                pass
         self.client = None
         for s in self.screens.values():
             if hasattr(s, "stop_monitor"):

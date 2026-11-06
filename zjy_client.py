@@ -13,8 +13,7 @@ import struct
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional, Union
-from urllib.parse import quote
+from typing import Optional
 
 import requests
 try:
@@ -641,12 +640,19 @@ class ZjyClient:
 
     # ==================== 课程获取 ====================
 
-    def get_my_courses(self) -> list:
+    def get_my_courses(self, ttl: float = 180.0) -> list:
         """聚合 SPOC / MOOC / 资源库三类课程,去重后返回。
 
         每个 course dict 含:courseId / courseInfoId / classId / courseName / _courseType
+
+        ttl>0 时带缓存：三类课程要打 3 个接口，而页面每次进入、监听线程
+        每轮都会调用，重复拉取既慢又浪费配额（真机反馈"取课程很慢"）。
         """
-        all_courses = []
+        now = time.time()
+        cache = getattr(self, "_courses_cache", None)
+        if cache and ttl > 0 and now - cache[0] < ttl:
+            return list(cache[1])
+
         course_map = {}
 
         def _add_course(c: dict, ctype: str):
@@ -701,7 +707,10 @@ class ZjyClient:
             c["classId"] = c.get("classId", "")
             _add_course(c, "RESOURCE")
 
-        return list(course_map.values())
+        result = list(course_map.values())
+        if ttl > 0:
+            self._courses_cache = (now, result)
+        return list(result)
 
     def get_course_activities(self, class_id: str, course_info_id: str, course_id: str) -> list:
         """获取当前正在进行的活动列表。"""
@@ -1259,7 +1268,23 @@ class ZjyClient:
         return False, f"PUT失败: {put_msg}; POST失败: {msg}"
 
     def _fetch_sign_records(self, sign_id: str, class_id: str) -> list:
-        """查询某签到活动的所有学生签到记录。"""
+        """查询某签到活动的所有学生签到记录（带缓存 + 命中即停）。
+
+        性能修复（真机反馈"取签到很慢"）：
+        1. 原来三个候选接口**全部**都要请求一遍（没有 break），
+           即使第一个就返回了数据 → 每条签到白跑 2 次请求。
+           改为拿到数据立即 break。
+        2. 同一签到会被 UI 与监听线程反复查询 → 加 15 秒 TTL 缓存。
+        """
+        key = (sign_id, class_id)
+        now = time.time()
+        cache = getattr(self, "_rec_cache", None)
+        if cache is None:
+            cache = self._rec_cache = {}
+        hit = cache.get(key)
+        if hit and now - hit[0] < 15:
+            return hit[1]
+
         records = []
         for api in ["spoc/courseFaceTeachSignStudent/page/listAll",
                     "spoc/courseFaceTeachSignStudent/list",
@@ -1271,7 +1296,8 @@ class ZjyClient:
                 })
                 rows = self.extract_rows(data)
                 if rows:
-                    records.extend(rows)
+                    records = rows
+                    break          # 命中即停，不再白跑后面两个接口
             except Exception as e:
                 log(f"查询签到记录异常({api}): {e}", "ERROR")
         # 去重
@@ -1282,7 +1308,15 @@ class ZjyClient:
             if rid not in seen_ids:
                 seen_ids.add(rid)
                 unique.append(r)
+        if len(cache) > 300:      # 防止长时间运行无限增长
+            cache.clear()
+        cache[key] = (now, unique)
         return unique
+
+    def clear_cache(self):
+        """登录/退出/手动刷新时清空缓存（课程列表与签到记录）。"""
+        self._courses_cache = None
+        self._rec_cache = {}
 
     def _match_my_record(self, records: list) -> Optional[dict]:
         """从签到记录中匹配当前用户的记录。
