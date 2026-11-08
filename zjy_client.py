@@ -35,6 +35,11 @@ from utils import log
 POOL_CONNECTIONS = 10
 POOL_MAXSIZE = 24
 
+# 全局请求最小间隔（秒）。用户明确要求"不要频繁请求"：并发线程在这里
+# 排队匀速发出，任何时刻网络上不会出现一批齐发的请求。
+# 0.3s ≈ 每秒最多 3.3 条，低于正常人工点按的节奏，不易触发风控。
+MIN_REQUEST_INTERVAL = 0.3
+
 # ==================== 域名常量 ====================
 BASE_URL = "https://zjy2.icve.com.cn/prod-api"        # 主域(SPOC/MOOC 课程)
 AI_BASE_URL = "https://ai.icve.com.cn/prod-api"        # AI 域(MOOC 课程设计/讨论)
@@ -159,6 +164,13 @@ class ZjyClient:
 
     def __init__(self, token: Optional[str] = None, sso_token: Optional[str] = None,
                  question_bank_dir: Optional[str] = None, accounts: Optional[dict] = None):
+        # ---- 请求节流（用户要求：不要频繁请求）----
+        # 全局串行化：任意两次请求之间至少间隔 MIN_REQUEST_INTERVAL 秒。
+        # 并发代码路径再多，落到网络上也是匀速的，避免瞬间爆发被服务端限流。
+        self._req_lock = threading.Lock()
+        self._last_req_at = 0.0
+        self._min_interval = MIN_REQUEST_INTERVAL
+
         self.session = requests.Session()
         _adapter = HTTPAdapter(pool_connections=POOL_CONNECTIONS, pool_maxsize=POOL_MAXSIZE)
         self.session.mount("https://", _adapter)
@@ -393,8 +405,22 @@ class ZjyClient:
 
     # ==================== 主域 API ====================
 
+    def _throttle(self):
+        """全局请求节流：保证任意两次请求间隔不小于 _min_interval。
+
+        并发线程在这里排队，网络上是匀速发出的，不会出现"一秒钟打十几次"
+        的爆发式请求（用户明确要求不要频繁请求，也降低被限流/风控的风险）。
+        """
+        with self._req_lock:
+            now = time.time()
+            wait = self._min_interval - (now - self._last_req_at)
+            if wait > 0:
+                time.sleep(wait)
+            self._last_req_at = time.time()
+
     def api_get(self, path: str, params: Optional[dict] = None, timeout: int = 10) -> Optional[dict]:
         """主域 GET 请求。"""
+        self._throttle()
         try:
             resp = self.session.get(f"{BASE_URL}/{path}", params=params, timeout=timeout)
             if resp.status_code == 200:
@@ -408,6 +434,7 @@ class ZjyClient:
 
         spoc/ 路径需特殊编码:JSON 序列化后对 % 做 %25 转义(抓包确认服务端要求)。
         """
+        self._throttle()
         try:
             if path.startswith("spoc/") and isinstance(body, dict):
                 payload_str = json.dumps(body, ensure_ascii=False)
@@ -434,6 +461,7 @@ class ZjyClient:
 
     def api_put(self, path: str, body: Optional[dict] = None, timeout: int = 10) -> Optional[dict]:
         """主域 PUT 请求。"""
+        self._throttle()
         try:
             resp = self.session.put(f"{BASE_URL}/{path}", json=body, timeout=timeout)
             if resp.status_code == 200:
@@ -444,6 +472,7 @@ class ZjyClient:
 
     def api_delete(self, path: str, params: Optional[dict] = None, timeout: int = 10) -> Optional[dict]:
         """主域 DELETE 请求。"""
+        self._throttle()
         try:
             resp = self.session.delete(f"{BASE_URL}/{path}", params=params, timeout=timeout)
             if resp.status_code == 200:
@@ -494,6 +523,7 @@ class ZjyClient:
         url = f"{AI_BASE_URL}/{path}"
 
         def _send():
+            self._throttle()
             headers = self._ai_headers()
             if verb == "GET":
                 return self.session.get(url, params=params, headers=headers, timeout=timeout)
@@ -544,6 +574,7 @@ class ZjyClient:
 
     def api_get_zyk(self, path: str, params: Optional[dict] = None, timeout: int = 10) -> Optional[dict]:
         """资源库域 GET,需带 Referer。"""
+        self._throttle()
         try:
             headers = {"Referer": "https://zyk.icve.com.cn/icve-study/courseDetailed"}
             if self.zyk_token:
@@ -559,6 +590,7 @@ class ZjyClient:
 
     def api_post_zyk(self, path: str, body: Optional[dict] = None, timeout: int = 10) -> Optional[dict]:
         """资源库域 POST。"""
+        self._throttle()
         try:
             headers = {"Content-Type": "application/json", "Referer": "https://zyk.icve.com.cn/icve-study/courseDetailed"}
             if self.zyk_token:
@@ -574,6 +606,7 @@ class ZjyClient:
 
     def api_put_zyk(self, path: str, body: Optional[dict] = None, timeout: int = 10) -> Optional[dict]:
         """资源库域 PUT。"""
+        self._throttle()
         try:
             headers = {"Content-Type": "application/json", "Referer": "https://zyk.icve.com.cn/icve-study/courseDetailed"}
             if self.zyk_token:
@@ -640,7 +673,7 @@ class ZjyClient:
 
     # ==================== 课程获取 ====================
 
-    def get_my_courses(self, ttl: float = 180.0) -> list:
+    def get_my_courses(self, ttl: float = 300.0) -> list:
         """聚合 SPOC / MOOC / 资源库三类课程,去重后返回。
 
         每个 course dict 含:courseId / courseInfoId / classId / courseName / _courseType

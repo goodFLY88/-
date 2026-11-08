@@ -23,7 +23,7 @@ SIGN_STATUS_MAP = {"0": "未签", "1": "已签", "2": "迟到", "3": "请假",
 
 # 签到列表短缓存：key=(classId, courseInfoId, courseId, max_sessions, recent_days)
 _sign_cache = {}
-SIGN_CACHE_TTL = 15.0
+SIGN_CACHE_TTL = 45.0
 
 
 def convert_gesture(raw) -> str:
@@ -117,7 +117,7 @@ def get_signs(client: ZjyClient, class_id: str, course_info_id: str, course_id: 
                     })
         return acts_found
 
-    with ThreadPoolExecutor(max_workers=15) as executor:
+    with ThreadPoolExecutor(max_workers=5) as executor:
         futures = {executor.submit(fetch_session_activities, s): s for s in sessions}
         for fut in as_completed(futures):
             try:
@@ -171,7 +171,7 @@ def get_signs(client: ZjyClient, class_id: str, course_info_id: str, course_id: 
     # 限制并发状态查询深度(前30个)
     sign_activities_to_query = sign_activities[:30]
     final_signs = []
-    with ThreadPoolExecutor(max_workers=20) as executor:
+    with ThreadPoolExecutor(max_workers=4) as executor:
         futures = {executor.submit(fetch_student_status, sa): sa for sa in sign_activities_to_query}
         for fut in as_completed(futures):
             try:

@@ -1034,7 +1034,7 @@ class CourseSelectScreen(MDScreen):
             self._monitoring = True
             self.monitor_btn.text = "停止监听"
             self.monitor_btn.md_bg_color = RED
-            self.append(">> 启动自动监听（每30秒扫描所有课程）")
+            self.append(">> 启动自动监听（每40秒扫描，避免频繁请求）")
             self._monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
             self._monitor_thread.start()
 
@@ -1077,8 +1077,8 @@ class CourseSelectScreen(MDScreen):
             except Exception as e:
                 err = f"[监听] 出错: {e}"
                 Clock.schedule_once(lambda dt: self.append(err), 0)
-            # 等待30秒(可被停止信号打断)
-            for _ in range(30):
+            # 等待40秒(可被停止信号打断)，降低请求频率
+            for _ in range(40):
                 if not self._monitoring:
                     break
                 time.sleep(1)
