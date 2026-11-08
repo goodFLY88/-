@@ -21,6 +21,10 @@ SIGN_TYPE_MAP = {"1": "普通", "2": "手势", "3": "二维码", "4": "位置", 
 SIGN_STATUS_MAP = {"0": "未签", "1": "已签", "2": "迟到", "3": "请假",
                    "4": "病假", "5": "事假"}
 
+# 签到列表短缓存：key=(classId, courseInfoId, courseId, max_sessions, recent_days)
+_sign_cache = {}
+SIGN_CACHE_TTL = 15.0
+
 
 def convert_gesture(raw) -> str:
     """将 API 返回的 0-based 手势数组转为 1-based 字符串。
@@ -53,6 +57,16 @@ def get_signs(client: ZjyClient, class_id: str, course_info_id: str, course_id: 
         startTime/endTime/myStatus/mySignTime
     """
     _t0 = time.time()
+    # 短缓存：页面连续点"拉取并补签→自定义改签"会重复拉同一门课，
+    # 每次都重打 1+N+M 个接口，真机表现为"签到记录很慢"。
+    # TTL 只给 15s，改签/补签成功后主动清缓存（见 _invalidate_sign_cache），
+    # 所以不会出现"改完还显示旧状态"。
+    ck = (class_id, course_info_id, course_id, max_sessions, recent_days)
+    hit = _sign_cache.get(ck)
+    if hit and time.time() - hit[0] < SIGN_CACHE_TTL:
+        log(f"[签到] 命中缓存，{len(hit[1])} 条", "DEBUG")
+        return [dict(s) for s in hit[1]]
+
     # 步骤一:获取课堂会话列表
     face_data = client.api_get("spoc/courseFaceTeachInfo/list", {
         "classId": class_id, "courseInfoId": course_info_id,
@@ -157,7 +171,7 @@ def get_signs(client: ZjyClient, class_id: str, course_info_id: str, course_id: 
     # 限制并发状态查询深度(前30个)
     sign_activities_to_query = sign_activities[:30]
     final_signs = []
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=20) as executor:
         futures = {executor.submit(fetch_student_status, sa): sa for sa in sign_activities_to_query}
         for fut in as_completed(futures):
             try:
@@ -170,7 +184,13 @@ def get_signs(client: ZjyClient, class_id: str, course_info_id: str, course_id: 
     final_signs.sort(key=lambda x: x.get("teachDate", ""), reverse=True)
     log(f"[签到] {course_id[:12]} 会话{len(sessions)} 签到{len(final_signs)} "
         f"耗时{time.time()-_t0:.1f}s", "DEBUG")
+    _sign_cache[ck] = (time.time(), [dict(s) for s in final_signs])
     return final_signs
+
+
+def _invalidate_sign_cache():
+    """签到状态变更后清缓存，保证下次拉取拿到最新状态。"""
+    _sign_cache.clear()
 
 
 # ==================== 一键补签 ====================
@@ -250,6 +270,8 @@ def batch_sign(client: ZjyClient, signs: list, class_id: str,
             details.append({"signId": sign["signId"], "result": "失败", "msg": result["msg"]})
 
     log(f"[{nickname}] 批量补签完成: 成功 {success}, 失败 {fail}", "INFO")
+    if success:
+        _invalidate_sign_cache()   # 状态已变，下次拉取要拿最新
     return {"code": 200, "success": success, "fail": fail, "details": details}
 
 
@@ -331,6 +353,7 @@ def do_sign_action(client: ZjyClient, payload: dict) -> dict:
                 log(f"[{nickname}] [改签] POST(回退): code={res.get('code') if res else 'None'}, msg={res.get('msg','') if res else '无响应'}", "DEBUG")
 
     if res and res.get("code") == 200:
+        _invalidate_sign_cache()   # 状态已变，下次拉取要拿最新
         # 检查是否"重复签到"(视为成功)
         if "重复签到" in str(res.get("msg", "")):
             log(f"[{nickname}] 签到状态已修改(已存在)", "INFO")

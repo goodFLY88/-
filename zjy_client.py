@@ -663,49 +663,72 @@ class ZjyClient:
                 c["_courseType"] = ctype
                 course_map[key] = c
 
-        # 1. SPOC 课程
-        spoc_data = self.api_get("spoc/courseInfoStudent/myCourseList", {"pageNum": 1, "pageSize": 100, "flag": "3"})
-        spoc_courses = self.extract_rows(spoc_data)
-        if not spoc_courses:
-            spoc_data = self.api_get("spoc/courseInfoStudent/app/myCourseList", {"pageNum": 1, "pageSize": 100})
-            spoc_courses = self.extract_rows(spoc_data)
-        for c in spoc_courses or []:
-            _add_course(c, "SPOC")
+        # 三类课程走三个不同接口，原来串行 → 4~6 个 RTT（SPOC 还可能
+        # fallback 再打一次、zyk 要先鉴权），真机表现为"取课程很慢"。
+        # 改成并发：3 个请求同时发出，总耗时约等于最慢的那一个。
+        from concurrent.futures import as_completed
 
-        # 2. MOOC 课程
-        mooc_params = {
-            "pageNum": 1, "pageSize": 100,
-            "selectType": "0", "courseType": "0",
-            "token": self.token, "userId": self.stu_id,
-        }
-        mooc_data = self.api_get("spoc/course/mooc/getMyCourseList", mooc_params)
-        mooc_courses = self.extract_rows(mooc_data)
-        for c in mooc_courses or []:
-            if not c.get("courseId") and c.get("moocCourseId"):
-                c["courseId"] = c.get("moocCourseId")
-            if not c.get("courseInfoId") and c.get("moocCourseInfoId"):
-                c["courseInfoId"] = c.get("moocCourseInfoId")
-            if not c.get("courseName") and c.get("courseTitle"):
-                c["courseName"] = c.get("courseTitle")
-            c["classId"] = c.get("classId", "")
-            _add_course(c, "MOOC")
+        def _fetch_spoc():
+            data = self.api_get("spoc/courseInfoStudent/myCourseList",
+                                {"pageNum": 1, "pageSize": 100, "flag": "3"})
+            rows = self.extract_rows(data)
+            if not rows:
+                data = self.api_get("spoc/courseInfoStudent/app/myCourseList",
+                                    {"pageNum": 1, "pageSize": 100})
+                rows = self.extract_rows(data)
+            return "SPOC", rows or []
 
-        # 3. 资源库课程(走 zyk 域)
-        if not self.zyk_token and not self.auth_zyk_domain():
-            pass  # 鉴权失败也继续,后续业务接口会重试
-        zyk_data = self.api_get_zyk("teacher/courseInfoStudent/myCourseList", {"pageNum": 1, "pageSize": 100})
-        zyk_rows = []
-        if isinstance(zyk_data, dict):
-            zyk_rows = zyk_data.get("rows") or []
-        for c in zyk_rows or []:
-            if not c.get("courseId"):
-                c["courseId"] = c.get("id") or c.get("resourceCourseId") or ""
-            if not c.get("courseInfoId"):
-                c["courseInfoId"] = c.get("resourceCourseInfoId") or c.get("courseInfoId") or ""
-            if not c.get("courseName"):
-                c["courseName"] = c.get("name") or c.get("courseTitle") or ""
-            c["classId"] = c.get("classId", "")
-            _add_course(c, "RESOURCE")
+        def _fetch_mooc():
+            mooc_params = {
+                "pageNum": 1, "pageSize": 100,
+                "selectType": "0", "courseType": "0",
+                "token": self.token, "userId": self.stu_id,
+            }
+            data = self.api_get("spoc/course/mooc/getMyCourseList", mooc_params)
+            rows = self.extract_rows(data) or []
+            for c in rows:
+                if not c.get("courseId") and c.get("moocCourseId"):
+                    c["courseId"] = c.get("moocCourseId")
+                if not c.get("courseInfoId") and c.get("moocCourseInfoId"):
+                    c["courseInfoId"] = c.get("moocCourseInfoId")
+                if not c.get("courseName") and c.get("courseTitle"):
+                    c["courseName"] = c.get("courseTitle")
+                c["classId"] = c.get("classId", "")
+            return "MOOC", rows
+
+        def _fetch_zyk():
+            if not self.zyk_token:
+                try:
+                    self.auth_zyk_domain()
+                except Exception:
+                    pass
+            data = self.api_get_zyk("teacher/courseInfoStudent/myCourseList",
+                                    {"pageNum": 1, "pageSize": 100})
+            rows = []
+            if isinstance(data, dict):
+                rows = data.get("rows") or []
+            for c in rows:
+                if not c.get("courseId"):
+                    c["courseId"] = c.get("id") or c.get("resourceCourseId") or ""
+                if not c.get("courseInfoId"):
+                    c["courseInfoId"] = c.get("resourceCourseInfoId") or c.get("courseInfoId") or ""
+                if not c.get("courseName"):
+                    c["courseName"] = c.get("name") or c.get("courseTitle") or ""
+                c["classId"] = c.get("classId", "")
+            return "RESOURCE", rows
+
+        _t0 = time.time()
+        with ThreadPoolExecutor(max_workers=3) as ex:
+            futs = [ex.submit(_fetch_spoc), ex.submit(_fetch_mooc), ex.submit(_fetch_zyk)]
+            for fut in as_completed(futs):
+                try:
+                    ctype, rows = fut.result()
+                except Exception as e:
+                    log(f"拉取课程异常: {e}", "ERROR")
+                    continue
+                for c in rows or []:
+                    _add_course(c, ctype)
+        log(f"取课程完成: {len(course_map)} 门, 耗时 {time.time() - _t0:.2f}s", "DEBUG")
 
         result = list(course_map.values())
         if ttl > 0:
@@ -1317,6 +1340,11 @@ class ZjyClient:
         """登录/退出/手动刷新时清空缓存（课程列表与签到记录）。"""
         self._courses_cache = None
         self._rec_cache = {}
+        try:
+            from sign import _invalidate_sign_cache
+            _invalidate_sign_cache()
+        except Exception:
+            pass
 
     def _match_my_record(self, records: list) -> Optional[dict]:
         """从签到记录中匹配当前用户的记录。
