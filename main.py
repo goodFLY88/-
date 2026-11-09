@@ -278,6 +278,18 @@ class TapScrollView(ScrollView):
         """
         if not self.tap_rows or not self.children:
             return None
+
+        # 优先用 Kivy 的坐标变换判定：ScrollView 会把 viewport 子控件真实
+        # 移动，to_window() 会连这条链一起算，边界（尤其列表第一条）最准。
+        for row in self.tap_rows:
+            try:
+                wx, wy = row.to_window(0, 0)
+            except Exception:
+                continue
+            if (wx <= x <= wx + row.width and wy <= y <= wy + row.height):
+                return row
+
+        # 兜底：内容坐标换算（见下方说明）
         inner = self.children[0]
         if inner.height > self.height:
             offset = (inner.height - self.height) * self.scroll_y
@@ -291,6 +303,10 @@ class TapScrollView(ScrollView):
                 d = abs(cy - (rel + row.height * 0.5))
                 if best_d is None or d < best_d:
                     best, best_d = row, d
+        if best is None:
+            # 未命中任何行时留一条诊断，便于真机排查"点了没反应"
+            print(f"[Tap] 未命中 x={x:.0f} y={y:.0f} rows={len(self.tap_rows)} "
+                  f"scroll_y={self.scroll_y:.3f}", flush=True)
         return best
 
     def on_touch_down(self, touch):
