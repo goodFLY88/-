@@ -1200,37 +1200,74 @@ class ZjyClient:
 
     def do_sign_ended(self, sign_id: str, class_id: str, course_id: str, course_info_id: str,
                       sign_type: str, teach_id: str = "") -> tuple:
-        """已结束签到的补签逻辑:查本人记录 → PUT → POST。
+        """已结束签到的补签逻辑:查本人记录 → PUT(minimal) → PUT(full) → POST。
+
+        每一次写操作后都回读校验状态是否真的变成"已签"：服务器存在
+        返回 200 却没落库的情况（真机反馈"提示修改成功但没效果"），
+        只有回读确认为 1 才算成功，否则继续用更完整的参数重试。
 
         :return: (ok: bool, msg: str)
         """
         records = self._fetch_sign_records(sign_id, class_id)
         my_record = self._match_my_record(records)
 
-        if not my_record:
-            # 无记录,直接 POST 创建
-            return self._post_create_sign(sign_id, class_id, course_id, course_info_id, teach_id)
+        my_name = self.user_info.get("nickName", "") if self.user_info else ""
+        my_no = self.user_info.get("userName", "") if self.user_info else ""
+        stu_id = (self.user_info.get("id") or self.user_info.get("userId")
+                  or self.stu_id) if self.user_info else self.stu_id
 
-        record_id = my_record.get("id")
+        if my_record:
+            real_student_no = my_record.get("studentNo") or my_no
+            real_student_name = my_record.get("studentName") or my_name
+            real_student_id = my_record.get("studentId") or (str(stu_id) if stu_id else "")
+            cur_status = str(my_record.get("signResultType", "0"))
+        else:
+            real_student_no, real_student_name = my_no, my_name
+            real_student_id = str(stu_id) if stu_id else ""
+            cur_status = ""
+
+        if cur_status == "1":
+            return True, "已签到过"
+
+        record_id = my_record.get("id") if my_record else None
+
         if not record_id:
-            return self._post_create_sign(sign_id, class_id, course_id, course_info_id, teach_id,
-                                          my_record)
+            # 无记录：POST 创建，然后回读确认
+            ok, msg = self._post_create_sign(sign_id, class_id, course_id,
+                                             course_info_id, teach_id, my_record)
+            if ok and self._verify_sign_status(sign_id, class_id) == "1":
+                return True, "补签成功(新建记录)"
+            if ok:
+                return False, "服务器返回成功但记录未生效，补签失败"
+            return False, msg
 
-        # 有记录ID,先 PUT 更新
+        # 第 1 次 PUT：最少参数
         res = self.api_put("spoc/courseFaceTeachSignStudent", {
             "id": record_id, "signId": sign_id, "signResultType": "1",
         })
-        if res and res.get("code") == 200:
-            return True, "签到成功(补签)"
-        if res and "重复签到" in str(res.get("msg", "")):
-            return True, "已签到过"
-
-        # PUT 失败,回退 POST
+        if self._verify_sign_status(sign_id, class_id) == "1":
+            return True, "补签成功"
         put_msg = res.get("msg", "") if res else "接口请求失败"
-        ok, msg = self._post_create_sign(sign_id, class_id, course_id, course_info_id, teach_id, my_record)
-        if ok:
-            return True, msg
-        return False, f"PUT失败: {put_msg}; POST失败: {msg}"
+
+        # 第 2 次 PUT：完整参数（已结束的签到对参数要求更严）
+        res = self.api_put("spoc/courseFaceTeachSignStudent", {
+            "id": record_id, "signId": sign_id, "signResultType": "1",
+            "classId": class_id, "courseId": course_id, "courseInfoId": course_info_id,
+            "teachId": teach_id,
+            "studentId": real_student_id, "studentName": real_student_name,
+            "studentNo": real_student_no,
+        })
+        if self._verify_sign_status(sign_id, class_id) == "1":
+            return True, "补签成功(完整参数)"
+        if res:
+            put_msg = res.get("msg", put_msg) or put_msg
+
+        # 第 3 次 POST 兜底
+        ok, msg = self._post_create_sign(sign_id, class_id, course_id,
+                                         course_info_id, teach_id, my_record)
+        if self._verify_sign_status(sign_id, class_id) == "1":
+            return True, "补签成功(POST)"
+        return False, f"补签未生效（PUT:{put_msg}；POST:{msg}），服务器可能限制课后补签"
 
     # ── 签到内部方法 ──
 
@@ -1278,50 +1315,87 @@ class ZjyClient:
 
     def _sign_normal(self, sign_id: str, class_id: str, course_id: str, course_info_id: str,
                      teach_id: str) -> tuple:
-        """普通/手势签到:查本人记录 → PUT(minimal) → PUT(full) → POST 兜底。"""
+        """普通/手势签到:查本人记录 → PUT(minimal) → PUT(full) → POST 兜底。
+
+        与 do_sign_ended 一样，每次写操作后回读校验，避免"假成功"。
+        """
         records = self._fetch_sign_records(sign_id, class_id)
         my_record = self._match_my_record(records)
 
         if not my_record:
-            return self._post_create_sign(sign_id, class_id, course_id, course_info_id, teach_id)
+            ok, msg = self._post_create_sign(sign_id, class_id, course_id,
+                                             course_info_id, teach_id)
+            if ok and self._verify_sign_status(sign_id, class_id) == "1":
+                return True, "签到成功(新建记录)"
+            if ok:
+                return False, "服务器返回成功但记录未生效"
+            return False, msg
 
         record_id = my_record.get("id")
         real_student_no = my_record.get("studentNo") or self.user_info.get("userName", "")
         real_student_name = my_record.get("studentName") or self.user_info.get("nickName", "")
         real_student_id = my_record.get("studentId") or (str(self.stu_id) if self.stu_id else "")
 
+        if str(my_record.get("signResultType", "0")) == "1":
+            return True, "已签到过"
+
         if not record_id:
-            return self._post_create_sign(sign_id, class_id, course_id, course_info_id, teach_id, my_record)
+            ok, msg = self._post_create_sign(sign_id, class_id, course_id,
+                                             course_info_id, teach_id, my_record)
+            if ok and self._verify_sign_status(sign_id, class_id) == "1":
+                return True, "签到成功(新建记录)"
+            if ok:
+                return False, "服务器返回成功但记录未生效"
+            return False, msg
 
         # 第1次PUT:最少参数(进行中的签到用这个就够了)
         result = self.api_put("spoc/courseFaceTeachSignStudent", {
             "id": record_id, "signId": sign_id, "signResultType": "1",
         })
-        if result and result.get("code") == 200:
+        if self._verify_sign_status(sign_id, class_id) == "1":
             return True, "签到成功"
-        if result and "重复签到" in str(result.get("msg", "")):
-            return True, "已签到过"
+        put_msg = result.get("msg", "") if result else "接口请求失败"
 
         # 第2次PUT:完整参数(已结束的签到需要更多参数)
-        put_msg = result.get("msg", "") if result else "接口请求失败"
-        if "签到时间已结束" in put_msg or "已结束" in put_msg:
-            result = self.api_put("spoc/courseFaceTeachSignStudent", {
-                "id": record_id, "signId": sign_id, "signResultType": "1",
-                "classId": class_id, "courseId": course_id, "courseInfoId": course_info_id,
-                "teachId": teach_id,
-                "studentId": real_student_id, "studentName": real_student_name, "studentNo": real_student_no,
-            })
-            if result and result.get("code") == 200:
-                return True, "签到成功(补签)"
-            if result and "重复签到" in str(result.get("msg", "")):
-                return True, "已签到过"
-            put_msg = result.get("msg", put_msg) if result else put_msg
+        result = self.api_put("spoc/courseFaceTeachSignStudent", {
+            "id": record_id, "signId": sign_id, "signResultType": "1",
+            "classId": class_id, "courseId": course_id, "courseInfoId": course_info_id,
+            "teachId": teach_id,
+            "studentId": real_student_id, "studentName": real_student_name, "studentNo": real_student_no,
+        })
+        if self._verify_sign_status(sign_id, class_id) == "1":
+            return True, "签到成功(完整参数)"
+        if result:
+            put_msg = result.get("msg", put_msg) or put_msg
 
         # 两次PUT都失败,回退POST
         ok, msg = self._post_create_sign(sign_id, class_id, course_id, course_info_id, teach_id, my_record)
-        if ok:
+        if self._verify_sign_status(sign_id, class_id) == "1":
             return True, msg
-        return False, f"PUT失败: {put_msg}; POST失败: {msg}"
+        return False, f"签到未生效（PUT:{put_msg}；POST:{msg}）"
+
+    def _verify_sign_status(self, sign_id: str, class_id: str) -> Optional[str]:
+        """回读本人该签到的真实状态（绕过缓存）。
+
+        服务器存在"接口返回 code=200 但记录根本没落库"的情况（改未签到
+        踩过一次），所以任何写操作之后都必须回读确认，不能轻信 200，
+        否则界面会提示"修改成功"而实际没效果。
+
+        :return: 状态字符串；None 表示查不到本人记录；"?" 表示查询失败无法确认。
+        """
+        try:
+            self._rec_cache.pop((sign_id, class_id), None)
+        except Exception:
+            pass
+        try:
+            records = self._fetch_sign_records(sign_id, class_id)
+            my = self._match_my_record(records)
+            if not my:
+                return None
+            return str(my.get("signResultType", "0"))
+        except Exception as e:
+            log(f"回读签到状态失败: {e}", "WARNING")
+            return "?"
 
     def _fetch_sign_records(self, sign_id: str, class_id: str) -> list:
         """查询某签到活动的所有学生签到记录（带缓存 + 命中即停）。

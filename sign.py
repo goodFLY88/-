@@ -356,11 +356,25 @@ def do_sign_action(client: ZjyClient, payload: dict) -> dict:
 
     if res and res.get("code") == 200:
         _invalidate_sign_cache()   # 状态已变，下次拉取要拿最新
+        # 回读校验：服务器常"返回 200 但没落库"（改未签到踩过），
+        # 不校验就会提示"修改成功"而实际没效果。
+        actual = client._verify_sign_status(sign_id, payload.get("classId", ""))
+        want = str(sign_result_type)
+        if actual == "?":
+            ok_verified = True      # 查不到状态不算失败，按接口结果
+        elif want == "0":
+            ok_verified = actual in (None, "0")   # 无记录也等于未签
+        else:
+            ok_verified = actual == want
+        if not ok_verified:
+            msg = f"服务器未生效(当前状态:{actual if actual else '无记录'})"
+            log(f"[{nickname}] 签到状态修改未生效: {msg}", "WARNING")
+            return {"code": 500, "msg": msg}
         # 检查是否"重复签到"(视为成功)
         if "重复签到" in str(res.get("msg", "")):
             log(f"[{nickname}] 签到状态已修改(已存在)", "INFO")
             return {"code": 200, "msg": "修改成功(已存在)"}
-        log(f"[{nickname}] 签到状态已修改", "INFO")
+        log(f"[{nickname}] 签到状态已修改并已确认", "INFO")
         return {"code": 200, "msg": "修改成功"}
 
     err_msg = res.get("msg", "操作失败") if res else "请求接口失败"
