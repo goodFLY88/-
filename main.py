@@ -272,6 +272,9 @@ class TapScrollView(ScrollView):
 
         用 row.y - inner.y 求行相对内容底部的偏移：两者都是绝对坐标且
         不随滚动变化，差值精确，且不依赖行被嵌套了几层容器。
+
+        真机反馈"卡片右侧/卡片之间点了没反应"：行是全宽的，横向不该再
+        做限制；纵向给上下各 10dp 容差，落在卡片间隙也能命中最近的一行。
         """
         if not self.tap_rows or not self.children:
             return None
@@ -281,11 +284,14 @@ class TapScrollView(ScrollView):
         else:
             offset = 0
         cy = offset + (y - self.y)
+        best, best_d = None, None
         for row in self.tap_rows:
             rel = row.y - inner.y
-            if row.x <= x <= row.right and rel <= cy <= rel + row.height:
-                return row
-        return None
+            if rel - dp(10) <= cy <= rel + row.height + dp(10):
+                d = abs(cy - (rel + row.height * 0.5))
+                if best_d is None or d < best_d:
+                    best, best_d = row, d
+        return best
 
     def on_touch_down(self, touch):
         if self.collide_point(*touch.pos):
@@ -296,7 +302,8 @@ class TapScrollView(ScrollView):
     def on_touch_move(self, touch):
         if self._down and not self._moved:
             x, y, _ = self._down
-            if abs(touch.x - x) > dp(12) or abs(touch.y - y) > dp(12):
+            # 手指轻微抖动不该被当成滚动（原来 12dp 阈值，真机常误判）
+            if abs(touch.x - x) > dp(24) or abs(touch.y - y) > dp(24):
                 self._moved = True
         return super().on_touch_move(touch)
 
@@ -305,10 +312,14 @@ class TapScrollView(ScrollView):
         d = self._down
         moved = self._moved
         self._down = None
-        if d and not moved and time.time() - d[2] < 1.2:
+        if d and not moved and time.time() - d[2] < 1.5:
             row = self._row_at(d[0], d[1])
             if row is not None and getattr(row, "on_tap", None):
-                row.on_tap()
+                try:
+                    row.on_tap()
+                except Exception as e:
+                    # 点击回调出错时不能静默吞掉，否则真机上表现为"点了没反应"
+                    print(f"[TapScrollView] on_tap 异常: {e}", flush=True)
         return res
 
 
@@ -801,11 +812,18 @@ class SignPickScreen(MDScreen):
                 font_style="Caption", size_hint_y=None, height=dp(26)))
             self.list.add_widget(row)
             self.scroll.tap_rows.append(row)
-        self.scroll.scroll_y = 1
+        # 等布局算完再定位到顶部，否则 scroll_y=1 时 offset 还按旧高度算，
+        # 命中判定会整体偏移
+        Clock.schedule_once(lambda dt: setattr(self.scroll, "scroll_y", 1), 0)
 
     def pick(self, sign):
         """选中某条记录 → 回到签到页并弹出状态选择（纯按钮，无需滚动）。"""
-        self.app.screens["sign"]._pick_sign_status(sign)
+        try:
+            self.app.screens["sign"]._pick_sign_status(sign)
+        except Exception as e:
+            # 真机上弹窗创建失败会表现为"点了没反应"，这里兜住并给出可见反馈
+            print(f"[SignPick] 打开改签弹窗失败: {e}", flush=True)
+            self.hint.text = f"打开改签弹窗失败: {e}"
 
 
 class CourseSelectScreen(MDScreen):
