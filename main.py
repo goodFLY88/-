@@ -41,7 +41,7 @@ from zjy_client import ZjyClient, SSO_BASE
 from auth import _exchange_token
 from speed_course import run_speed_course
 from answer import get_course_exams_list, run_auto_answer_all_task
-from sign import (get_signs, batch_sign, do_sign_action,
+from sign import (get_signs, batch_sign, do_sign_action, one_click_sign,
                   SIGN_TYPE_MAP, SIGN_STATUS_MAP)
 from accounts import list_accounts, save_account, delete_account
 
@@ -1118,7 +1118,12 @@ class CourseSelectScreen(MDScreen):
         layout.bind(minimum_height=layout.setter("height"))
         layout.add_widget(MDLabel(text=f"{sign.get('teachTitle','')}", theme_text_color="Primary",
                                  size_hint_y=None, height=dp(35)))
-        layout.add_widget(MDLabel(text="改为：", theme_text_color="Secondary",
+        # 补签：走真实签到通道（未结束→do_sign，已结束→do_sign_ended），
+        # 不是直接改考勤记录，服务端会按正常签到流程记一条"已签"。
+        repair = primary_button("补签", height=dp(48), bg=GREEN)
+        repair.bind(on_release=lambda *_: self._do_repair_sign(sign))
+        layout.add_widget(repair)
+        layout.add_widget(MDLabel(text="或改为：", theme_text_color="Secondary",
                                  size_hint_y=None, height=dp(30)))
         from kivy.uix.gridlayout import GridLayout
         grid = GridLayout(cols=2, spacing=dp(8), size_hint_y=None)
@@ -1140,6 +1145,41 @@ class CourseSelectScreen(MDScreen):
         # 从整页选择记录过来时，取消后回到签到页
         if self.app.sm.current == "signpick":
             self.app.goto("sign")
+
+    def _do_repair_sign(self, sign):
+        """补签：走真实签到通道，把该条记录补成"已签"。
+
+        与"自定义改签"的区别：改签是直接改考勤记录的 signResultType，
+        补签则调用 do_sign / do_sign_ended（服务端按正常签到流程落记录），
+        对没有记录或改签不生效的签到更可靠。
+        """
+        if getattr(self, "_dialog", None):
+            self._dialog.dismiss()
+        if self.app.sm.current == "signpick":
+            self.app.goto("sign")
+        cid, ciid, coid = self._sign_ctx
+        s = dict(sign)
+        s["classId"], s["courseId"], s["courseInfoId"] = cid, coid, ciid
+        # 是否已结束：有 endTime 就按时间比，没有按"补签历史记录"处理
+        end_time = s.get("endTime", "")
+        s["isEnded"] = True
+        if end_time:
+            try:
+                from datetime import datetime
+                s["isEnded"] = datetime.strptime(str(end_time)[:19], "%Y-%m-%d %H:%M:%S") < datetime.now()
+            except Exception:
+                s["isEnded"] = True
+        self.append(f">> 补签：{s.get('teachDate','')} {s.get('teachTitle','')}")
+        def work():
+            try:
+                r = one_click_sign(self.app.client, s)
+                ok = r.get("code") == 200
+                Clock.schedule_once(lambda dt: self.append(
+                    f"  {'补签成功' if ok else '补签失败'}: {r.get('msg','')}"), 0)
+            except Exception as e:
+                err = f"!! 补签出错: {e}"
+                Clock.schedule_once(lambda dt: self.append(err), 0)
+        threading.Thread(target=work, daemon=True).start()
 
     def _do_custom_sign(self, sign, status_type):
         if getattr(self, "_dialog", None): self._dialog.dismiss()

@@ -215,7 +215,9 @@ def one_click_sign(client: ZjyClient, sign: dict) -> dict:
     if is_ended:
         ok, msg = client.do_sign_ended(sign_id, class_id, course_id, course_info_id, sign_type, teach_id)
     else:
-        ok, msg = client.do_sign(sign_id, class_id, course_id, course_info_id, sign_type, teach_id)
+        # 手势签到要把 gesture 带上，否则服务端校验不过
+        ok, msg = client.do_sign(sign_id, class_id, course_id, course_info_id, sign_type, teach_id,
+                                 sign.get("gesture", ""))
 
     if ok:
         log(f"[{nickname}] 签到成功: {msg}", "SUCCESS")
