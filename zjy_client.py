@@ -1422,7 +1422,7 @@ class ZjyClient:
             try:
                 data = self.api_get(api, {
                     "signId": sign_id, "classId": class_id,
-                    "pageNum": "1", "pageSize": "1000",
+                    "pageNum": "1", "pageSize": "2000",
                 })
                 rows = self.extract_rows(data)
                 if rows:

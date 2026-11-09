@@ -1202,6 +1202,45 @@ class CourseSelectScreen(MDScreen):
         self.append(f">> 改签为{SIGN_STATUS_MAP.get(status_type,status_type)}...")
         def work():
             try:
+                # 照搬稳定版做法：提交前现查一次本人记录，拿真实主键 id 与学生信息。
+                # 列表里缓存的 recordId 可能是空/过期，服务器会返回 200 但实际不落库。
+                try:
+                    client._rec_cache.pop((sign["signId"], cid), None)   # 绕过 45s 缓存
+                except Exception:
+                    pass
+                rec = None
+                try:
+                    rec = client._match_my_record(
+                        client._fetch_sign_records(sign["signId"], cid))
+                except Exception:
+                    rec = None
+                if rec:
+                    if rec.get("id"):
+                        payload["id"] = rec["id"]
+                    if rec.get("studentId"):
+                        payload["studentId"] = rec["studentId"]
+                    if rec.get("studentName"):
+                        payload["studentName"] = rec["studentName"]
+                    if rec.get("studentNo"):
+                        payload["studentNo"] = rec["studentNo"]
+                elif status_type == "1":
+                    # 没有本人记录又要改成"已签"：直接改考勤记录不可靠，
+                    # 照搬稳定版，走真实签到通道（do_sign / do_sign_ended）。
+                    s = dict(sign)
+                    s["classId"], s["courseId"], s["courseInfoId"] = cid, coid, ciid
+                    s["isEnded"] = True
+                    end_time = s.get("endTime", "")
+                    if end_time:
+                        try:
+                            from datetime import datetime
+                            s["isEnded"] = datetime.strptime(
+                                str(end_time)[:19], "%Y-%m-%d %H:%M:%S") < datetime.now()
+                        except Exception:
+                            s["isEnded"] = True
+                    r = one_click_sign(client, s)
+                    Clock.schedule_once(lambda dt: self.append(
+                        f"  {'成功' if r.get('code')==200 else '失败'}(走签到通道): {r.get('msg','')}"), 0)
+                    return
                 r = do_sign_action(client, payload)
                 Clock.schedule_once(lambda dt: self.append(
                     f"  {'成功' if r.get('code')==200 else '失败'}: {r.get('msg','')}"), 0)
