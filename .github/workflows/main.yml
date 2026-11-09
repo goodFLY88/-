@@ -18,6 +18,30 @@ jobs:
 
       # 优化版:直接在仓库根目录打包(单一代码源),不再切到 APK工程/
       # 注意:管道加 set -o pipefail,否则 tee 会吞掉 docker 的失败退出码(又一个假绿来源)
+      # 绕开 GitHub 下载 Gradle 的 504 / 超时问题（曾连续 6 次重试全卡在这一步）
+      # 宿主机网络比容器内宽裕，用国内镜像先拉好，容器里让 wrapper 读本地文件
+      - name: 预下载 Gradle 发行包（国内镜像）
+        shell: bash
+        run: |
+          set -e
+          URLS=(
+            "https://mirrors.cloud.tencent.com/gradle/gradle-8.14.3-all.zip"
+            "https://mirrors.huaweicloud.com/gradle/gradle-8.14.3-all.zip"
+          )
+          for U in "${URLS[@]}"; do
+            echo "尝试下载: $U"
+            if curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 --max-time 600 \
+                -o gradle-8.14.3-all.zip "$U"; then
+              if unzip -tq gradle-8.14.3-all.zip >/dev/null 2>&1; then
+                echo "Gradle 已就绪: $(du -h gradle-8.14.3-all.zip | cut -f1)"
+                exit 0
+              fi
+              echo "压缩包校验失败，换下一个源"
+            fi
+          done
+          echo "Gradle 预下载全部失败"
+          exit 1
+
       - name: 用官方镜像打包 APK（首次跑通到 pyjnius 失败后 patch 再续）
         shell: bash
         run: |
@@ -30,9 +54,20 @@ jobs:
               set -x
               git config --global --add safe.directory "*"
 
+              # gradle wrapper 指向本地预下载包，避免从 GitHub 现下（504/超时）
+              patch_gradle() {
+                find /project/.buildozer -name gradle-wrapper.properties 2>/dev/null | while read -r F; do
+                  sed -i "s|^distributionUrl=.*|distributionUrl=file\\:/project/gradle-8.14.3-all.zip|" "$F"
+                done
+                echo "gradle-wrapper.properties patched:"
+                find /project/.buildozer -name gradle-wrapper.properties -exec grep -H distributionUrl {} \; 2>/dev/null || true
+              }
+              patch_gradle
+
               # 循环：每次失败后 patch，再重试
               for i in 1 2 3 4 5 6; do
                 echo "=== build attempt $i ==="
+                patch_gradle
                 # yes | : 新版 buildozer 检测到 root 会交互询问
                 # "Are you sure you want to continue [y/n]?",CI 无 stdin 时会
                 # EOFError 崩溃(假绿元凶),这里用 yes 喂 y
