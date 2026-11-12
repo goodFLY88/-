@@ -107,7 +107,7 @@ def _patch_pil_rectangle():
 
 _patch_pil_rectangle()
 
-APP_VERSION = "v1.3.13"
+APP_VERSION = "v1.3.14"
 
 
 def _append_diag(text):
@@ -262,59 +262,40 @@ class TapScrollView(ScrollView):
         self._down = None
         self._moved = False
 
-    def _content_offset(self, row, inner):
-        """行底边相对滚动内容容器底部的偏移。
-
-        Kivy 的 .y 是"相对父容器"的局部坐标，跨层相减没有意义；
-        这里从行开始沿父链把每层偏移累加起来，直到内容容器为止。
-        """
-        y = row.y
-        p = row.parent
-        guard = 0
-        while p is not None and p is not inner and guard < 8:
-            y += p.y
-            p = p.parent
-            guard += 1
-        return y
-
     def _row_at(self, x, y):
-        """把窗口坐标换算成"内容坐标"，再找命中的行。
+        """按 Kivy 的真实绘制位置命中行。
 
-        Kivy 的 ScrollView 滚动是通过平移内容画布实现的：行的 .y 不随
-        滚动改变，to_window()/to_widget() 也因此拿不到真实屏幕位置
-        （真机验证：用它们判定会整体偏移，点上面弹出下面）。
+        结论来自 Kivy 源码（kivy/uix/scrollview.py: update_from_scroll）：
+            vp.pos = 0, 0
+            self.g_translate.xy = x, y        # 真正的滚动位移在画布矩阵里
+        所以「行在屏幕上的真实纵坐标 = g_translate.y + row.y」，
+        而 row.y 本身已经是内容坐标，**不能再累加父容器偏移**
+        （之前累加 course_box.y=333 就是那 333px 固定偏移的来源）。
 
-        所以只能自己补回滚动量：
-          内容坐标 = (内容高度 - 视口高度) * scroll_y + 视口内高度
-        内容坐标与"行的相对偏移"同一坐标系，比对才准确。
+        之前几版分别用 to_window()/to_widget()/scroll_y 反算，都会在
+        多层级嵌套时错位；这里只依赖画布矩阵，与嵌套层数无关。
         """
         if not self.tap_rows:
             return None
-        # 注意：ScrollView 会把内容容器的 pos 强制设为 (0,0)，再用画布
-        # 矩阵平移，所以 children[0] 未必是内容容器（可能是滚动条），
-        # 必须取 _viewport 才能拿到真实内容高度。
-        inner = getattr(self, "_viewport", None) or (self.children and self.children[0])
-        sy = self.to_window(0, 0)[1]              # 视口底边（窗口坐标）
-        if inner.height > self.height:
-            offset = (inner.height - self.height) * self.scroll_y
-        else:
-            offset = 0
-        cy = offset + (y - sy)
+        shift = self.g_translate.xy[1]      # 内容坐标 → 屏幕坐标
         best, best_d = None, None
         for row in self.tap_rows:
-            rel = self._content_offset(row, inner)
-            if rel - dp(6) <= cy <= rel + row.height + dp(6):
-                d = abs(cy - (rel + row.height * 0.5))
+            lo = shift + row.y
+            hi = lo + row.height
+            if lo - dp(4) <= y <= hi + dp(4):
+                d = abs(y - (lo + hi) * 0.5)
                 if best_d is None or d < best_d:
                     best, best_d = row, d
         if best is None:
-            print(f"[Tap] 未命中 x={x:.0f} y={y:.0f} cy={cy:.0f} "
+            print(f"[Tap] 未命中 x={x:.0f} y={y:.0f} shift={shift:.0f} "
                   f"rows={len(self.tap_rows)}", flush=True)
         return best
 
     def on_touch_down(self, touch):
-        wx, wy = self.to_window(0, 0)      # 滚动区自身位置（不受画布平移影响）
-        if wx <= touch.x <= wx + self.width and wy <= touch.y <= wy + self.height:
+        # 用 Kivy 自带 collide_point：widget.pos 本身就是窗口绝对坐标。
+        # 之前用 to_window(0,0) 判定，在嵌套布局里会返回 (0,0)，
+        # 导致顶部区域的按下事件根本没被记录（真机表现为"上面点不动"）。
+        if self.collide_point(touch.x, touch.y):
             self._down = (touch.x, touch.y, time.time())
             self._moved = False
         return super().on_touch_down(touch)
