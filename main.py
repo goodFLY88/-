@@ -792,19 +792,38 @@ class SignPickScreen(MDScreen):
             st = str(s.get("myStatus", "0"))
             st_label = SIGN_STATUS_MAP.get(st, st)
             row = TapRow(on_tap=lambda sig=s: self.pick(sig))
+            row._sign = s
             row.add_widget(MDLabel(
                 text=f"{s.get('teachDate','')}  {s.get('teachTitle','?')}",
                 theme_text_color="Custom", text_color=TEXT_MAIN,
                 size_hint_y=None, height=dp(30)))
-            row.add_widget(MDLabel(
+            st_lbl = MDLabel(
                 text=f"当前状态：{st_label}  —— 点击改签",
                 theme_text_color="Custom", text_color=TEXT_SUB,
-                font_style="Caption", size_hint_y=None, height=dp(26)))
+                font_style="Caption", size_hint_y=None, height=dp(26))
+            row._status_label = st_lbl
+            row.add_widget(st_lbl)
             self.list.add_widget(row)
             self.scroll.tap_rows.append(row)
         # 等布局算完再定位到顶部，否则 scroll_y=1 时 offset 还按旧高度算，
         # 命中判定会整体偏移
         Clock.schedule_once(lambda dt: setattr(self.scroll, "scroll_y", 1), 0)
+
+    def update_status(self, sign, status):
+        """改签/补签成功后把列表里这一条的状态就地更新。
+
+        不重新拉网络：既省请求（用户要求别频繁请求），又能让用户马上
+        看到"到底生效没生效"，不用来回切页面。
+        """
+        sign["myStatus"] = str(status)
+        label = SIGN_STATUS_MAP.get(str(status), str(status))
+        for row in self.scroll.tap_rows:
+            if getattr(row, "_sign", None) is sign:
+                lbl = getattr(row, "_status_label", None)
+                if lbl:
+                    lbl.text = f"当前状态：{label}  —— 点击改签"
+                break
+        self.hint.text = f"已更新：{sign.get('teachDate','')} → {label}"
 
     def pick(self, sign):
         """选中某条记录 → 回到签到页并弹出状态选择（纯按钮，无需滚动）。"""
@@ -1123,10 +1142,18 @@ class CourseSelectScreen(MDScreen):
         self.app.goto("signpick")
 
     def _pick_sign_status(self, sign):
-        if getattr(self, "_dialog", None): self._dialog.dismiss()
+        try:
+            if getattr(self, "_dialog", None):
+                self._dialog.dismiss()
+        except Exception:
+            pass
+        self._dialog = None
         layout = BoxLayout(orientation="vertical", spacing=dp(8), size_hint_y=None)
         layout.bind(minimum_height=layout.setter("height"))
-        layout.add_widget(MDLabel(text=f"{sign.get('teachTitle','')}", theme_text_color="Primary",
+        title_line = f"{sign.get('teachDate','')} {sign.get('teachTitle','')}".strip()
+        if len(title_line) > 18:
+            title_line = title_line[:18] + "…"
+        layout.add_widget(MDLabel(text=title_line, theme_text_color="Primary",
                                  size_hint_y=None, height=dp(35)))
         # 补签：走真实签到通道（未结束→do_sign，已结束→do_sign_ended），
         # 不是直接改考勤记录，服务端会按正常签到流程记一条"已签"。
@@ -1150,8 +1177,12 @@ class CourseSelectScreen(MDScreen):
         self._dialog.open()
 
     def _cancel_pick(self):
-        if getattr(self, "_dialog", None):
-            self._dialog.dismiss()
+        try:
+            if getattr(self, "_dialog", None):
+                self._dialog.dismiss()
+        except Exception:
+            pass
+        self._dialog = None
         # 从整页选择记录过来时，取消后回到签到页
         if self.app.sm.current == "signpick":
             self.app.goto("sign")
@@ -1184,8 +1215,15 @@ class CourseSelectScreen(MDScreen):
             try:
                 r = one_click_sign(self.app.client, s)
                 ok = r.get("code") == 200
-                Clock.schedule_once(lambda dt: self.append(
-                    f"  {'补签成功' if ok else '补签失败'}: {r.get('msg','')}"), 0)
+                msg = r.get("msg", "")
+                def _ui(dt):
+                    self.append(f"  {'补签成功' if ok else '补签失败'}: {msg}")
+                    if ok:
+                        try:
+                            self.app.screens["signpick"].update_status(sign, "1")
+                        except Exception:
+                            pass
+                Clock.schedule_once(_ui, 0)
             except Exception as e:
                 err = f"!! 补签出错: {e}"
                 Clock.schedule_once(lambda dt: self.append(err), 0)
@@ -1252,8 +1290,17 @@ class CourseSelectScreen(MDScreen):
                         f"  {'成功' if r.get('code')==200 else '失败'}(走签到通道): {r.get('msg','')}"), 0)
                     return
                 r = do_sign_action(client, payload)
-                Clock.schedule_once(lambda dt: self.append(
-                    f"  {'成功' if r.get('code')==200 else '失败'}: {r.get('msg','')}"), 0)
+                ok = r.get("code") == 200
+                msg = r.get("msg", "")
+                def _ui(dt):
+                    self.append(f"  {'成功' if ok else '失败'}: {msg}")
+                    if ok:
+                        # 就地刷新列表里的这条状态，用户不用再拉一次才看到
+                        try:
+                            self.app.screens["signpick"].update_status(sign, status_type)
+                        except Exception:
+                            pass
+                Clock.schedule_once(_ui, 0)
             except Exception as e:
                 err = f"!! 改签出错: {e}"
                 Clock.schedule_once(lambda dt: self.append(err), 0)
