@@ -289,25 +289,41 @@ class TapScrollView(ScrollView):
             if (wx <= x <= wx + row.width and wy <= y <= wy + row.height):
                 return row
 
-        # 兜底：内容坐标换算（见下方说明）
+        # 兜底：内容坐标换算
+        # 注意 Kivy 的 widget.y 是"相对父容器"的局部坐标，不是绝对坐标。
+        # 原来直接 row.y - inner.y 是两个不同父系相减，数值无意义，列表
+        # 顶部会整体错位（真机表现：第一、二条点不动）。
+        # 正确做法：把 row 到滚动内容容器之间的每层偏移逐级累加。
         inner = self.children[0]
+        sy = self.to_window(0, 0)[1]          # 滚动区在窗口里的底边
         if inner.height > self.height:
             offset = (inner.height - self.height) * self.scroll_y
         else:
             offset = 0
-        cy = offset + (y - self.y)
+        cy = offset + (y - sy)
         best, best_d = None, None
         for row in self.tap_rows:
-            rel = row.y - inner.y
+            rel = self._content_offset(row, inner)
             if rel - dp(10) <= cy <= rel + row.height + dp(10):
                 d = abs(cy - (rel + row.height * 0.5))
                 if best_d is None or d < best_d:
                     best, best_d = row, d
         if best is None:
-            # 未命中任何行时留一条诊断，便于真机排查"点了没反应"
             print(f"[Tap] 未命中 x={x:.0f} y={y:.0f} rows={len(self.tap_rows)} "
-                  f"scroll_y={self.scroll_y:.3f}", flush=True)
+                  f"scroll_y={self.scroll_y:.3f} cy={cy:.0f}", flush=True)
         return best
+
+    @staticmethod
+    def _content_offset(row, inner):
+        """row 底边相对内容容器底部的偏移（逐层累加局部坐标）。"""
+        y = row.y
+        p = row.parent
+        guard = 0
+        while p is not None and p is not inner and guard < 8:
+            y += p.y
+            p = p.parent
+            guard += 1
+        return y
 
     def on_touch_down(self, touch):
         if self.collide_point(*touch.pos):
@@ -834,6 +850,8 @@ class SignPickScreen(MDScreen):
 
     def pick(self, sign):
         """选中某条记录 → 回到签到页并弹出状态选择（纯按钮，无需滚动）。"""
+        # 点击有立即可见的反馈：即使弹窗创建失败，用户也能确定"点到了"
+        self.hint.text = f"已选中：{sign.get('teachDate','')} {sign.get('teachTitle','')}"
         try:
             self.app.screens["sign"]._pick_sign_status(sign)
         except Exception as e:
