@@ -270,8 +270,8 @@ class TapScrollView(ScrollView):
         row.collide_point()，否则滑过之后再点就会命中错误的行
         （真机反馈"点击选择的课程不对"）。
 
-        用 row.y - inner.y 求行相对内容底部的偏移：两者都是绝对坐标且
-        不随滚动变化，差值精确，且不依赖行被嵌套了几层容器。
+        行相对内容底部的偏移用逐层累加局部坐标求得（见 _content_offset），
+        它不随滚动变化，滚动位置则由 scroll_y 换算出视图内的高度补回去。
 
         真机反馈"卡片右侧/卡片之间点了没反应"：行是全宽的，横向不该再
         做限制；纵向给上下各 10dp 容差，落在卡片间隙也能命中最近的一行。
@@ -279,15 +279,9 @@ class TapScrollView(ScrollView):
         if not self.tap_rows or not self.children:
             return None
 
-        # 优先用 Kivy 的坐标变换判定：ScrollView 会把 viewport 子控件真实
-        # 移动，to_window() 会连这条链一起算，边界（尤其列表第一条）最准。
-        for row in self.tap_rows:
-            try:
-                wx, wy = row.to_window(0, 0)
-            except Exception:
-                continue
-            if (wx <= x <= wx + row.width and wy <= y <= wy + row.height):
-                return row
+        # 注意：不要用 row.to_window() 做判定。ScrollView 滚动是画布平移，
+        # row 的窗口坐标不随滚动更新，滑过之后再点会整体偏下
+        # （真机反馈"点上面一条，弹出来的是下面一条"）。
 
         # 兜底：内容坐标换算
         # 注意 Kivy 的 widget.y 是"相对父容器"的局部坐标，不是绝对坐标。
