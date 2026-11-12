@@ -288,9 +288,12 @@ class TapScrollView(ScrollView):
           内容坐标 = (内容高度 - 视口高度) * scroll_y + 视口内高度
         内容坐标与"行的相对偏移"同一坐标系，比对才准确。
         """
-        if not self.tap_rows or not self.children:
+        if not self.tap_rows:
             return None
-        inner = self.children[0]
+        # 注意：ScrollView 会把内容容器的 pos 强制设为 (0,0)，再用画布
+        # 矩阵平移，所以 children[0] 未必是内容容器（可能是滚动条），
+        # 必须取 _viewport 才能拿到真实内容高度。
+        inner = getattr(self, "_viewport", None) or (self.children and self.children[0])
         sy = self.to_window(0, 0)[1]              # 视口底边（窗口坐标）
         if inner.height > self.height:
             offset = (inner.height - self.height) * self.scroll_y
