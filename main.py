@@ -263,64 +263,28 @@ class TapScrollView(ScrollView):
         self._moved = False
 
     def _row_at(self, x, y):
-        """把窗口坐标换算成内容坐标后找命中的行。
+        """用 Kivy 的窗口坐标 -> 控件局部坐标转换来找命中的行。
 
-        关键：Kivy 的 ScrollView 滚动靠画布平移，子控件的 .y **不会**
-        随滚动更新（实测：滚动前后 row[0].y 完全相同）。所以不能直接
-        row.collide_point()，否则滑过之后再点就会命中错误的行
-        （真机反馈"点击选择的课程不对"）。
-
-        行相对内容底部的偏移用逐层累加局部坐标求得（见 _content_offset），
-        它不随滚动变化，滚动位置则由 scroll_y 换算出视图内的高度补回去。
-
-        真机反馈"卡片右侧/卡片之间点了没反应"：行是全宽的，横向不该再
-        做限制；纵向给上下各 10dp 容差，落在卡片间隙也能命中最近的一行。
+        为什么不用自己算偏移：ScrollView 滚动时内容容器被整体移动，
+        而行的 .y 是相对父容器的局部坐标，混用不同层级的坐标一定会错位
+        （真机反复反馈"点上面弹下面"）。to_widget() 会沿着 行->列表->滚动区
+        这整条父链把窗口坐标正确换算下来，滚动前后都准确。
         """
-        if not self.tap_rows or not self.children:
+        if not self.tap_rows:
             return None
-
-        # 注意：不要用 row.to_window() 做判定。ScrollView 滚动是画布平移，
-        # row 的窗口坐标不随滚动更新，滑过之后再点会整体偏下
-        # （真机反馈"点上面一条，弹出来的是下面一条"）。
-
-        # 兜底：内容坐标换算
-        # 注意 Kivy 的 widget.y 是"相对父容器"的局部坐标，不是绝对坐标。
-        # 原来直接 row.y - inner.y 是两个不同父系相减，数值无意义，列表
-        # 顶部会整体错位（真机表现：第一、二条点不动）。
-        # 正确做法：把 row 到滚动内容容器之间的每层偏移逐级累加。
-        inner = self.children[0]
-        sy = self.to_window(0, 0)[1]          # 滚动区在窗口里的底边
-        if inner.height > self.height:
-            offset = (inner.height - self.height) * self.scroll_y
-        else:
-            offset = 0
-        cy = offset + (y - sy)
-        best, best_d = None, None
         for row in self.tap_rows:
-            rel = self._content_offset(row, inner)
-            if rel - dp(10) <= cy <= rel + row.height + dp(10):
-                d = abs(cy - (rel + row.height * 0.5))
-                if best_d is None or d < best_d:
-                    best, best_d = row, d
-        if best is None:
-            print(f"[Tap] 未命中 x={x:.0f} y={y:.0f} rows={len(self.tap_rows)} "
-                  f"scroll_y={self.scroll_y:.3f} cy={cy:.0f}", flush=True)
-        return best
-
-    @staticmethod
-    def _content_offset(row, inner):
-        """row 底边相对内容容器底部的偏移（逐层累加局部坐标）。"""
-        y = row.y
-        p = row.parent
-        guard = 0
-        while p is not None and p is not inner and guard < 8:
-            y += p.y
-            p = p.parent
-            guard += 1
-        return y
+            try:
+                lx, ly = row.to_widget(x, y)
+            except Exception:
+                continue
+            # 横向整行都算（行本身是全宽），纵向给 6dp 容差覆盖卡片间隙
+            if 0 <= lx <= row.width and -dp(6) <= ly <= row.height + dp(6):
+                return row
+        return None
 
     def on_touch_down(self, touch):
-        if self.collide_point(*touch.pos):
+        lx, ly = self.to_widget(touch.x, touch.y)
+        if 0 <= lx <= self.width and 0 <= ly <= self.height:
             self._down = (touch.x, touch.y, time.time())
             self._moved = False
         return super().on_touch_down(touch)
