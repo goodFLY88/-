@@ -262,29 +262,56 @@ class TapScrollView(ScrollView):
         self._down = None
         self._moved = False
 
-    def _row_at(self, x, y):
-        """用 Kivy 的窗口坐标 -> 控件局部坐标转换来找命中的行。
+    def _content_offset(self, row, inner):
+        """行底边相对滚动内容容器底部的偏移。
 
-        为什么不用自己算偏移：ScrollView 滚动时内容容器被整体移动，
-        而行的 .y 是相对父容器的局部坐标，混用不同层级的坐标一定会错位
-        （真机反复反馈"点上面弹下面"）。to_widget() 会沿着 行->列表->滚动区
-        这整条父链把窗口坐标正确换算下来，滚动前后都准确。
+        Kivy 的 .y 是"相对父容器"的局部坐标，跨层相减没有意义；
+        这里从行开始沿父链把每层偏移累加起来，直到内容容器为止。
         """
-        if not self.tap_rows:
+        y = row.y
+        p = row.parent
+        guard = 0
+        while p is not None and p is not inner and guard < 8:
+            y += p.y
+            p = p.parent
+            guard += 1
+        return y
+
+    def _row_at(self, x, y):
+        """把窗口坐标换算成"内容坐标"，再找命中的行。
+
+        Kivy 的 ScrollView 滚动是通过平移内容画布实现的：行的 .y 不随
+        滚动改变，to_window()/to_widget() 也因此拿不到真实屏幕位置
+        （真机验证：用它们判定会整体偏移，点上面弹出下面）。
+
+        所以只能自己补回滚动量：
+          内容坐标 = (内容高度 - 视口高度) * scroll_y + 视口内高度
+        内容坐标与"行的相对偏移"同一坐标系，比对才准确。
+        """
+        if not self.tap_rows or not self.children:
             return None
+        inner = self.children[0]
+        sy = self.to_window(0, 0)[1]              # 视口底边（窗口坐标）
+        if inner.height > self.height:
+            offset = (inner.height - self.height) * self.scroll_y
+        else:
+            offset = 0
+        cy = offset + (y - sy)
+        best, best_d = None, None
         for row in self.tap_rows:
-            try:
-                lx, ly = row.to_widget(x, y)
-            except Exception:
-                continue
-            # 横向整行都算（行本身是全宽），纵向给 6dp 容差覆盖卡片间隙
-            if 0 <= lx <= row.width and -dp(6) <= ly <= row.height + dp(6):
-                return row
-        return None
+            rel = self._content_offset(row, inner)
+            if rel - dp(6) <= cy <= rel + row.height + dp(6):
+                d = abs(cy - (rel + row.height * 0.5))
+                if best_d is None or d < best_d:
+                    best, best_d = row, d
+        if best is None:
+            print(f"[Tap] 未命中 x={x:.0f} y={y:.0f} cy={cy:.0f} "
+                  f"rows={len(self.tap_rows)}", flush=True)
+        return best
 
     def on_touch_down(self, touch):
-        lx, ly = self.to_widget(touch.x, touch.y)
-        if 0 <= lx <= self.width and 0 <= ly <= self.height:
+        wx, wy = self.to_window(0, 0)      # 滚动区自身位置（不受画布平移影响）
+        if wx <= touch.x <= wx + self.width and wy <= touch.y <= wy + self.height:
             self._down = (touch.x, touch.y, time.time())
             self._moved = False
         return super().on_touch_down(touch)
