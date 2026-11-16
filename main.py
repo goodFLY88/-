@@ -107,7 +107,7 @@ def _patch_pil_rectangle():
 
 _patch_pil_rectangle()
 
-APP_VERSION = "v1.3.14"
+APP_VERSION = "v1.3.15"
 
 
 def _append_diag(text):

@@ -1497,6 +1497,9 @@ class ZjyClient:
                 rows = self.extract_rows(data)
                 my = self._match_my_record(rows) if rows else None
                 if my:
+                    log(f"[记录] 命中 {api}: id={my.get('id')} "
+                        f"status={my.get('signResultType')} "
+                        f"stu={my.get('studentName')}", "DEBUG")
                     return my
             except Exception as e:
                 log(f"定位本人签到记录异常({api}): {e}", "ERROR")
