@@ -1263,14 +1263,10 @@ class CourseSelectScreen(MDScreen):
             try:
                 # 照搬稳定版做法：提交前现查一次本人记录，拿真实主键 id 与学生信息。
                 # 列表里缓存的 recordId 可能是空/过期，服务器会返回 200 但实际不落库。
-                try:
-                    client._rec_cache.pop((sign["signId"], cid), None)   # 绕过 45s 缓存
-                except Exception:
-                    pass
                 rec = None
                 try:
-                    rec = client._match_my_record(
-                        client._fetch_sign_records(sign["signId"], cid))
+                    # 跨接口现查本人记录（未签时真实主键只在 notSign 里）
+                    rec = client._find_my_record(sign["signId"], cid)
                 except Exception:
                     rec = None
                 if rec:

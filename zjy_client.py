@@ -1208,8 +1208,7 @@ class ZjyClient:
 
         :return: (ok: bool, msg: str)
         """
-        records = self._fetch_sign_records(sign_id, class_id)
-        my_record = self._match_my_record(records)
+        my_record = self._find_my_record(sign_id, class_id)
 
         my_name = self.user_info.get("nickName", "") if self.user_info else ""
         my_no = self.user_info.get("userName", "") if self.user_info else ""
@@ -1319,8 +1318,7 @@ class ZjyClient:
 
         与 do_sign_ended 一样，每次写操作后回读校验，避免"假成功"。
         """
-        records = self._fetch_sign_records(sign_id, class_id)
-        my_record = self._match_my_record(records)
+        my_record = self._find_my_record(sign_id, class_id)
 
         if not my_record:
             ok, msg = self._post_create_sign(sign_id, class_id, course_id,
@@ -1388,8 +1386,7 @@ class ZjyClient:
         except Exception:
             pass
         try:
-            records = self._fetch_sign_records(sign_id, class_id)
-            my = self._match_my_record(records)
+            my = self._find_my_record(sign_id, class_id)
             if not my:
                 return None
             return str(my.get("signResultType", "0"))
@@ -1472,6 +1469,37 @@ class ZjyClient:
                 return r
             if (my_no and my_no == rno):
                 return r
+        return None
+
+    def _find_my_record(self, sign_id: str, class_id: str) -> Optional[dict]:
+        """跨候选接口定位"本人"在该签到活动里的记录。
+
+        为什么必须跨接口查：page/listAll 往往只返回已签/部分记录，本人
+        未签时在那里根本匹配不到；真正带本人主键 id 的"未签"记录在
+        page/notSign 里。只查第一个接口 → 匹配不到本人 → 走 POST 新建
+        → 服务器返回 200 却不落库（真机踩过的"假成功"）。
+
+        这里按候选接口逐个查、命中即停：已签的情况第一个就命中（快），
+        未签的情况多查一次才拿到真实 id（准）。
+        """
+        try:
+            self._rec_cache.pop((sign_id, class_id), None)
+        except Exception:
+            pass
+        for api in ["spoc/courseFaceTeachSignStudent/page/listAll",
+                    "spoc/courseFaceTeachSignStudent/list",
+                    "spoc/courseFaceTeachSignStudent/page/notSign"]:
+            try:
+                data = self.api_get(api, {
+                    "signId": sign_id, "classId": class_id,
+                    "pageNum": "1", "pageSize": "2000",
+                })
+                rows = self.extract_rows(data)
+                my = self._match_my_record(rows) if rows else None
+                if my:
+                    return my
+            except Exception as e:
+                log(f"定位本人签到记录异常({api}): {e}", "ERROR")
         return None
 
     def _post_create_sign(self, sign_id: str, class_id: str, course_id: str, course_info_id: str,
